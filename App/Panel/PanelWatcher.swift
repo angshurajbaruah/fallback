@@ -65,7 +65,6 @@ final class PanelWatcher {
               front.processIdentifier == host.processIdentifier || front.bundleIdentifier == Self.panelService
         else { return }
 
-        noteUnseenFocus()
         for (element, viaService) in candidates(host: host) {
             let hash = Int(bitPattern: CFHash(element))
             guard !rejected.contains(hash) else { continue }
@@ -78,7 +77,9 @@ final class PanelWatcher {
             let ok = buttons.first { $0.string(kAXIdentifierAttribute) == "OKButton" } ?? defaultButton
             let cancel = buttons.first { $0.string(kAXIdentifierAttribute) == "CancelButton" }
                 ?? element.element(kAXCancelButtonAttribute)
-            guard let ok, cancel != nil, PanelReader.hasFileList(element) else {
+            // A collapsed Save panel has no file list, but must still be recognised (and ignored).
+            let isSave = ok.map { PanelKind(defaultButtonTitle: $0.string(kAXTitleAttribute) ?? "") == .save } ?? false
+            guard let ok, cancel != nil, isSave || PanelReader.hasFileList(element) else {
                 // Main windows don't turn into panels, so check them once. Sheets may still be loading.
                 if !isSheetOrDialog { reject(hash, element, ok) } else { noteScan(element) }
                 continue
@@ -86,6 +87,7 @@ final class PanelWatcher {
             begin(element, button: ok, cancel: cancel, host: host, viaService: viaService)
             return
         }
+        noteUnseenFocus()
     }
 
     private var lastUnseen = ""
@@ -187,7 +189,15 @@ final class PanelWatcher {
             guard let hit else { return }
             if hit.matches(panel.defaultButton) { panel.closedBy = .defaultButton }
             else if hit.matches(panel.cancelButton) { panel.closedBy = .cancel }
-            else if event.clickCount == 2 { panel.closedBy = .doubleClick }
+            else if event.clickCount == 2 {
+                panel.closedBy = .doubleClick
+                // A double-click opens the file and closes the panel at once: read the row under the mouse.
+                if let row = PanelReader.row(under: hit) {
+                    panel.picks = [row]
+                    tracked = panel
+                    return
+                }
+            }
             else { return }
         default:
             return
@@ -213,11 +223,9 @@ final class PanelWatcher {
         let closedBy = panel.closedBy
         Task {
             var fromB: [String] = []
-            for delay in [1.5, 3.0] { // Spotlight can take a moment to update
-                try? await Task.sleep(for: .seconds(delay))
-                fromB = await Spotlight.recentlyUsed(names: names, withinSeconds: 10)
-                if !fromB.isEmpty { break }
-            }
+            // One quick try so a pick's lines stay together; in testing Spotlight never matched (0 of 34).
+            try? await Task.sleep(for: .seconds(0.5))
+            fromB = await Spotlight.recentlyUsed(names: names, withinSeconds: 10)
             if fromB.isEmpty { log.add("METHOD B", "✗ Spotlight found no file used in the last 10 seconds") }
             for path in fromB { log.add("METHOD B", path) }
             log.add("RESULT", Self.verdict(fromA: fromA, fromB: Set(fromB), aHadNames: !names.isEmpty, closedBy: closedBy))

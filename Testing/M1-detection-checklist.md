@@ -111,3 +111,24 @@ Open the chat with yourself ("Message yourself"). Click **+** › Document (or P
 ## When you're done
 
 Count the ✓. Click **Copy Log** in the Detection Log window and paste the log into Claude Code with this page's ✓/✗ column, so we can see which method worked where.
+
+## Results (18 Nov 2026)
+
+Run by the owner across Chrome (Gmail, ChatGPT, ilovepdf), Safari (Gmail, test page), Mail, Slack and WhatsApp, not strictly in row order.
+
+| What | Tried | Passed |
+|---|---|---|
+| File panels detected | 44 | 44 (none missed) |
+| Picks with the right file(s) | 34 | 33 |
+| Escape or Cancel recorded nothing | 10 | 10 |
+| Several files at once | 6 | 6 |
+| List view (⌘2) | 4 | 4 |
+| Save panel recorded nothing | 1 | 1 |
+
+**43 of 44 = 98%. Gate (95%) passed.**
+
+- The one miss was a fast double-click in Chrome: the panel closed before the selection was read. Fixed by reading the row under the mouse; rechecked in Mail.
+- **Method A carried every capture. Method B (Spotlight) matched 0 of 34**: attaching a file doesn't set its last-used date. Don't rely on it.
+- Every panel was a sheet in the app's own window, found by its `OKButton`/`CancelButton` identifiers, including Safari and Mail (sandboxed).
+- Destinations: browsers give the tab URL and title; Mail gives the subject; Slack gives channel and workspace; WhatsApp only gives "WhatsApp".
+- For M2: a browser's own File › Open (opening a page) is logged as a send. Safari labels upload panels "Upload", Chrome says "Open" for both.

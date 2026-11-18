@@ -89,6 +89,17 @@ enum PanelReader {
         }
     }
 
+    /// The file row containing `hit` (e.g. the text under the mouse), if it's in a file list.
+    static func row(under hit: AXUIElement) -> Pick? {
+        var node = hit
+        for _ in 0..<6 {
+            guard let parent = node.element(kAXParentAttribute) else { return nil }
+            if let role = parent.role, listRoles.contains(role) { return isSidebar(parent) ? nil : pick(node) }
+            node = parent
+        }
+        return nil
+    }
+
     private static func isSidebar(_ el: AXUIElement) -> Bool {
         let label = [el.string(kAXIdentifierAttribute), el.string(kAXDescriptionAttribute)]
             .compactMap { $0 }.joined(separator: " ").lowercased()
