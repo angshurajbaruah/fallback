@@ -24,16 +24,41 @@ enum PanelReader {
         if let column = found.filter(\.inColumnView).map(\.element).last(where: { !selectedRows($0).isEmpty }) {
             lists.append(column)
         }
-        return lists.flatMap(selectedRows).compactMap(pick)
+        let picks = lists.flatMap(selectedRows).compactMap(pick)
+        return picks.isEmpty ? focusedListPicks(in: panel) : picks
+    }
+
+    /// Backup: the list with keyboard focus is where the user just selected the file.
+    private static func focusedListPicks(in panel: AXUIElement) -> [Pick] {
+        var pid: pid_t = 0
+        AXUIElementGetPid(panel, &pid)
+        guard let focused = AXUIElementCreateApplication(pid).element(kAXFocusedUIElementAttribute),
+              let role = focused.role, listRoles.contains(role), !isSidebar(focused) else { return [] }
+        return selectedRows(focused).compactMap(pick)
     }
 
     /// One line describing the lists found, so a failed read can be diagnosed from the log.
     static func describe(_ panel: AXUIElement) -> String {
         let parts = containers(in: panel).map { c in
             let id = c.element.string(kAXIdentifierAttribute) ?? c.element.string(kAXDescriptionAttribute) ?? "-"
-            return "\(c.element.role ?? "?")(\(id))\(c.inColumnView ? "[column]" : "")"
+            let subrole = c.element.string(kAXSubroleAttribute).map { "/\($0)" } ?? ""
+            return "\(c.element.role ?? "?")\(subrole)(\(id))\(c.inColumnView ? "[column]" : "")"
         }
         return parts.joined(separator: " ")
+    }
+
+    /// Push buttons in the panel, outside its file lists.
+    static func buttons(in panel: AXUIElement) -> [AXUIElement] {
+        var out: [AXUIElement] = []
+        var visited = 0
+        func walk(_ el: AXUIElement, depth: Int) {
+            visited += 1
+            guard depth < 14, visited < 600, let role = el.role, role != "AXWebArea", !listRoles.contains(role) else { return }
+            if role == "AXButton" { out.append(el); return }
+            for child in el.children { walk(child, depth: depth + 1) }
+        }
+        walk(panel, depth: 0)
+        return out
     }
 
     private static func containers(in panel: AXUIElement) -> [Container] {
@@ -43,10 +68,25 @@ enum PanelReader {
             visited += 1
             guard depth < 14, visited < 600, let role = el.role, role != "AXWebArea" else { return }
             if listRoles.contains(role) { out.append(Container(element: el, inColumnView: inBrowser)); return }
-            for child in el.children { walk(child, depth: depth + 1, inBrowser: inBrowser || role == "AXBrowser") }
+            for child in descendants(el, role) { walk(child, depth: depth + 1, inBrowser: inBrowser || role == "AXBrowser") }
         }
         walk(panel, depth: 0, inBrowser: false)
         return out
+    }
+
+    /// Column view keeps its columns in AXColumns, not always in AXChildren.
+    /// Scroll areas in column view report no children; their list is under AXContents.
+    private static func descendants(_ el: AXUIElement, _ role: String) -> [AXUIElement] {
+        let children = el.children
+        switch role {
+        case "AXBrowser":
+            let columns = el.elements(kAXColumnsAttribute)
+            return columns.isEmpty ? children : columns
+        case "AXScrollArea" where children.isEmpty:
+            return el.elements(kAXContentsAttribute)
+        default:
+            return children
+        }
     }
 
     private static func isSidebar(_ el: AXUIElement) -> Bool {

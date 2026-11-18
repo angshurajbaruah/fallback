@@ -3,9 +3,11 @@ import AppKit
 /// Captures where a pick is going, at the moment the panel opens (FR-4, PRD 9.3 step 3).
 @MainActor
 enum ContextResolver {
-    static func capture(host: NSRunningApplication) -> [String] {
-        let app = AXUIElementCreateApplication(host.processIdentifier)
-        let title = app.element(kAXFocusedWindowAttribute)?.string(kAXTitleAttribute) ?? "—"
+    static func capture(host: NSRunningApplication, panel: AXUIElement) -> [String] {
+        // A sheet's parent is the window it's attached to; otherwise use the app's focused window.
+        let window = panel.role == "AXSheet" ? panel.element(kAXParentAttribute)
+            : AXUIElementCreateApplication(host.processIdentifier).element(kAXFocusedWindowAttribute)
+        let title = window?.string(kAXTitleAttribute) ?? "—"
         var lines = ["window title “\(title)” (Accessibility)"]
         guard let id = host.bundleIdentifier, let script = tabScript(for: id) else {
             lines.append("no tab address for this app, window title only")

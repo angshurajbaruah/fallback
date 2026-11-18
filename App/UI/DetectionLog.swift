@@ -25,7 +25,28 @@ final class DetectionLog {
         entries.append(Entry(tag: tag, text: text))
         if entries.count > 2000 { entries.removeFirst(entries.count - 2000) }
         logger.info("\(tag, privacy: .public) \(text, privacy: .private)")
+        #if DEBUG
+        Self.appendToFile(entries[entries.count - 1].line)
+        #endif
     }
+
+    #if DEBUG
+    /// Spike only: a copy on disk so results can be read without Copy Log. Never in release builds.
+    static let fileURL = FileManager.default.homeDirectoryForCurrentUser
+        .appending(path: "Library/Logs/Fallback/detection-debug.log")
+
+    private static func appendToFile(_ line: String) {
+        let data = Data((line + "\n").utf8)
+        if let handle = try? FileHandle(forWritingTo: fileURL) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+        } else {
+            try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: fileURL)
+        }
+    }
+    #endif
 
     var text: String { entries.map(\.line).joined(separator: "\n") }
 }

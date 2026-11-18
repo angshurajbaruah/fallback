@@ -66,10 +66,48 @@ final class PanelWatcher {
         else { return }
 
         for (element, viaService) in candidates(host: host) {
-            guard let button = element.element(kAXDefaultButtonAttribute), PanelReader.hasFileList(element) else { continue }
-            begin(element, button: button, host: host, viaService: viaService)
+            let hash = Int(bitPattern: CFHash(element))
+            guard !rejected.contains(hash) else { continue }
+            let isSheetOrDialog = viaService || element.role == "AXSheet" || element.string(kAXSubroleAttribute) == "AXDialog"
+            let defaultButton = element.element(kAXDefaultButtonAttribute)
+            guard isSheetOrDialog || defaultButton != nil else { continue }
+            // Standard file panels name their buttons OKButton and CancelButton, whatever the label or language.
+            // Mail's sheet doesn't report a default button, so these names are the main signal.
+            let buttons = PanelReader.buttons(in: element)
+            let ok = buttons.first { $0.string(kAXIdentifierAttribute) == "OKButton" } ?? defaultButton
+            let cancel = buttons.first { $0.string(kAXIdentifierAttribute) == "CancelButton" }
+                ?? element.element(kAXCancelButtonAttribute)
+            guard let ok, cancel != nil, PanelReader.hasFileList(element) else {
+                // Main windows don't turn into panels, so check them once. Sheets may still be loading.
+                if !isSheetOrDialog { reject(hash, element, ok) } else { noteScan(element) }
+                continue
+            }
+            begin(element, button: ok, cancel: cancel, host: host, viaService: viaService)
             return
         }
+    }
+
+    private var rejected: Set<Int> = []
+    private var lastScan = ""
+
+    private func reject(_ hash: Int, _ element: AXUIElement, _ button: AXUIElement?) {
+        if rejected.count > 500 { rejected.removeAll() }
+        rejected.insert(hash)
+        log.add("SKIPPED", "\(Self.shape(element)) has a default button “\(button?.string(kAXTitleAttribute) ?? "")” but isn't a file panel")
+    }
+
+    /// Spike diagnostic for a sheet or dialog that looked close but didn't qualify. Logged when it changes.
+    private func noteScan(_ element: AXUIElement) {
+        let buttons = PanelReader.buttons(in: element)
+            .map { "\($0.string(kAXTitleAttribute) ?? "")#\($0.string(kAXIdentifierAttribute) ?? "-")" }
+        let scan = "\(Self.shape(element)) buttons \(buttons) · file list: \(PanelReader.hasFileList(element) ? "yes" : "no")"
+        guard scan != lastScan else { return }
+        lastScan = scan
+        log.add("NEAR MISS", scan)
+    }
+
+    private static func shape(_ element: AXUIElement) -> String {
+        "\(element.role ?? "?")/\(element.string(kAXSubroleAttribute) ?? "-")"
     }
 
     private func candidates(host: NSRunningApplication) -> [(AXUIElement, Bool)] {
@@ -86,11 +124,11 @@ final class PanelWatcher {
         }
     }
 
-    private func begin(_ element: AXUIElement, button: AXUIElement, host: NSRunningApplication, viaService: Bool) {
+    private func begin(_ element: AXUIElement, button: AXUIElement, cancel: AXUIElement?, host: NSRunningApplication, viaService: Bool) {
         let buttonTitle = button.string(kAXTitleAttribute) ?? ""
         let kind = PanelKind(defaultButtonTitle: buttonTitle)
         var panel = Tracked(element: element, kind: kind, defaultButton: button,
-                            cancelButton: element.element(kAXCancelButtonAttribute))
+                            cancelButton: cancel)
         let app = "\(host.localizedName ?? "?") (\(host.bundleIdentifier ?? "?"))"
         guard kind == .open else {
             log.add("IGNORED", "Save panel in \(app), button “\(buttonTitle)”")
@@ -98,8 +136,8 @@ final class PanelWatcher {
             return
         }
         let drawnBy = viaService ? "drawn by the Open and Save Panel Service" : "drawn by the app itself"
-        log.add("OPEN PANEL", "\(app) · \(drawnBy) · button “\(buttonTitle)”")
-        for line in ContextResolver.capture(host: host) { log.add("CONTEXT", line) }
+        log.add("OPEN PANEL", "\(app) · \(drawnBy) · \(Self.shape(element)) · button “\(buttonTitle)”")
+        for line in ContextResolver.capture(host: host, panel: element) { log.add("CONTEXT", line) }
         log.add("LISTS", PanelReader.describe(element))
         panel.picks = PanelReader.picks(in: element)
         tracked = panel
