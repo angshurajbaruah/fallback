@@ -6,7 +6,7 @@ gen:
 	xcodegen generate
 
 build: gen
-	xcodebuild -project Fallback.xcodeproj -scheme Fallback -configuration Debug -derivedDataPath build build -quiet
+	xcodebuild -project Fallback.xcodeproj -scheme Fallback -configuration Debug -derivedDataPath build build -quiet -allowProvisioningUpdates
 
 test:
 	cd Packages/FallbackCore && swift test

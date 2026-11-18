@@ -23,12 +23,11 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         ENABLE_HARDENED_RUNTIME: YES
-        OTHER_CODE_SIGN_FLAGS: "--options=runtime" # Xcode skips Hardened Runtime for ad-hoc signing without this
-        ENABLE_DEBUG_DYLIB: NO # its ad-hoc signature fails Hardened Runtime library checks
         ENABLE_APP_SANDBOX: NO
         CODE_SIGN_ENTITLEMENTS: App/Fallback.entitlements
-        CODE_SIGN_IDENTITY: "-"
-        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: YM6Q5VGJZK # Personal Team: stable signature so macOS keeps permissions across rebuilds
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "Apple Development"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_CFBundleDisplayName: Fallback
