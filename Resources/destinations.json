@@ -1,0 +1,21 @@
+{
+  "web": [
+    { "id": "workday", "host": "^(?<label>[a-z0-9-]+)\\.wd[0-9]+\\.myworkdayjobs\\.com$", "titleCase": true },
+    { "id": "greenhouse", "host": "^(job-)?boards\\.greenhouse\\.io$", "path": "^/(?<label>[^/]+)", "titleCase": true },
+    { "id": "lever", "host": "^jobs\\.lever\\.co$", "path": "^/(?<label>[^/]+)", "titleCase": true },
+    { "id": "ashby", "host": "^jobs\\.ashbyhq\\.com$", "path": "^/(?<label>[^/]+)", "titleCase": true },
+    { "id": "linkedin", "host": "(^|\\.)linkedin\\.com$", "path": "^/jobs", "title": "^[^|]+\\|\\s*(?<label>[^|]+?)\\s*\\|\\s*LinkedIn", "fallback": "LinkedIn" },
+    { "id": "naukri", "host": "(^|\\.)naukri\\.com$", "title": "^[^|-]+ [-|] (?<label>[^|-]+?) [-|]", "fallback": "Naukri" },
+    { "id": "gmail", "host": "^mail\\.google\\.com$", "fixed": "Gmail" },
+    { "id": "outlook", "host": "^outlook\\.(live|office)\\.com$", "fixed": "Outlook" },
+    { "id": "whatsapp-web", "host": "^web\\.whatsapp\\.com$", "fixed": "WhatsApp Web" }
+  ],
+  "apps": [
+    { "id": "slack", "bundleIDs": ["com.tinyspeck.slackmacgap"], "title": "^(?<label>.+?) \\((Channel|Private channel)\\) - (?<scope>.+?) - Slack$", "labelPrefix": "#" },
+    { "id": "slack", "bundleIDs": ["com.tinyspeck.slackmacgap"], "title": "^(?<label>.+?) \\((DM|Group DM)\\) - (?<scope>.+?) - Slack$" }
+  ],
+  "multiPartSuffixes": [
+    "co.in", "net.in", "org.in", "ac.in", "gov.in", "co.uk", "org.uk", "ac.uk", "gov.uk",
+    "com.au", "net.au", "org.au", "co.nz", "co.jp", "co.za", "com.br", "com.sg", "com.my", "com.mx", "com.cn", "com.hk", "co.kr"
+  ]
+}

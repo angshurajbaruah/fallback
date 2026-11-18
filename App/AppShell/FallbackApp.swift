@@ -7,39 +7,71 @@ struct FallbackApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent()
+            PopoverView().environment(delegate.model)
         } label: {
-            Image("MenuBarIcon")
-                .accessibilityLabel(FallbackCore.appName)
+            MenuBarLabel(model: delegate.model)
         }
+        .menuBarExtraStyle(.window)
+
+        Window("Fallback", id: "ledger") {
+            LedgerView().environment(delegate.model)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1280, height: 800)
+
+        #if DEBUG
+        // Development builds only: the M1 detection log (⌥⌘D in the popover).
         Window("Detection Log", id: "detection-log") {
-            DetectionLogView(log: delegate.log)
+            DetectionLogView(log: delegate.model.log)
         }
+        #endif
     }
 }
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let log = DetectionLog()
-    private lazy var watcher = PanelWatcher(log: log)
+    let model = AppModel()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Theme.registerFonts()
+        #if DEBUG
+        if Snapshots.runIfRequested() { exit(0) }
+        #endif
         // Adds Fallback to the Accessibility list and shows macOS's prompt if access isn't granted yet.
         _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-        watcher.start()
+        model.start()
     }
 }
 
-private struct MenuContent: View {
-    @Environment(\.openWindow) private var openWindow
+/// The menu-bar icon: dims to 45% when paused, and gets a Burnt Tangerine dot when
+/// Accessibility is off (BRAND.md "Menu-bar icon", FR-31).
+private struct MenuBarLabel: View {
+    let model: AppModel
 
     var body: some View {
-        Button("Detection Log…") {
-            openWindow(id: "detection-log")
-            NSApp.activate()
+        Image(nsImage: Self.image(paused: model.isPaused, problem: !model.isTrusted))
+            .accessibilityLabel(model.isTrusted ? FallbackCore.appName : "\(FallbackCore.appName), needs Accessibility")
+    }
+
+    static func image(paused: Bool, problem: Bool) -> NSImage {
+        guard let base = NSImage(named: "MenuBarIcon") else { return NSImage() }
+        guard paused || problem else { return base }
+        let size = base.size
+        let image = NSImage(size: size, flipped: false) { rect in
+            base.draw(in: rect, from: .zero, operation: .sourceOver, fraction: paused ? 0.45 : 1)
+            if problem {
+                // Not a template any more, so tint the glyph to the menu bar's text colour ourselves.
+                NSColor.labelColor.withAlphaComponent(paused ? 0.45 : 1).setFill()
+                rect.fill(using: .sourceAtop)
+                let dot = NSRect(x: rect.maxX - 8, y: rect.maxY - 8, width: 7, height: 7)
+                NSColor(Theme.bg).setFill()
+                NSBezierPath(ovalIn: dot.insetBy(dx: -1.5, dy: -1.5)).fill()
+                NSColor(Theme.warning).setFill()
+                NSBezierPath(ovalIn: dot).fill()
+            }
+            return true
         }
-        Divider()
-        Button("Quit Fallback") { NSApplication.shared.terminate(nil) }
-            .keyboardShortcut("q")
+        image.isTemplate = !problem
+        return image
     }
 }

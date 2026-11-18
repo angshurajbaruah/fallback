@@ -19,17 +19,25 @@ final class PanelWatcher {
         let kind: PanelKind
         let defaultButton: AXUIElement?
         let cancelButton: AXUIElement?
+        var context: PanelContext?
         var picks: [Pick] = []
         var closedBy: CloseReason = .unknown
     }
 
+    /// Called once per confirmed pick (not for Cancel), with the files, where they went and how they were found.
+    typealias OnPick = @MainActor ([Pick], PanelContext, DetectionMethod) -> Void
+
     private let log: DetectionLog
+    private let onPick: OnPick
     private var timer: Timer?
     private var monitor: Any?
     private var lastHost: NSRunningApplication?
     private var tracked: Tracked?
 
-    init(log: DetectionLog) { self.log = log }
+    init(log: DetectionLog, onPick: @escaping OnPick) {
+        self.log = log
+        self.onPick = onPick
+    }
 
     func start() {
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.5)
@@ -165,7 +173,11 @@ final class PanelWatcher {
         }
         let drawnBy = viaService ? "drawn by the Open and Save Panel Service" : "drawn by the app itself"
         log.add("OPEN PANEL", "\(app) · \(drawnBy) · \(Self.shape(element)) · button “\(buttonTitle)”")
-        for line in ContextResolver.capture(host: host, panel: element) { log.add("CONTEXT", line) }
+        let context = ContextResolver.capture(host: host, panel: element)
+        panel.context = context
+        log.add("CONTEXT", "window title “\(context.windowTitle ?? "—")”")
+        if let url = context.url { log.add("CONTEXT", "tab \(url)  “\(context.tabTitle ?? "")” (Apple Events)") }
+        if let note = context.note { log.add("CONTEXT", note) }
         log.add("LISTS", PanelReader.describe(element))
         panel.picks = PanelReader.picks(in: element)
         tracked = panel
@@ -221,6 +233,9 @@ final class PanelWatcher {
         let names = panel.picks.map(\.name)
         let fromA = Set(panel.picks.compactMap(\.path))
         let closedBy = panel.closedBy
+        guard let context = panel.context else { return }
+        // Method A found the files: record now.
+        if !fromA.isEmpty { onPick(panel.picks, context, .axPanel) }
         Task {
             var fromB: [String] = []
             // One quick try so a pick's lines stay together; in testing Spotlight never matched (0 of 34).
@@ -228,6 +243,13 @@ final class PanelWatcher {
             fromB = await Spotlight.recentlyUsed(names: names, withinSeconds: 10)
             if fromB.isEmpty { log.add("METHOD B", "✗ Spotlight found no file used in the last 10 seconds") }
             for path in fromB { log.add("METHOD B", path) }
+            if fromA.isEmpty {
+                if !fromB.isEmpty {
+                    onPick(fromB.map { Pick(path: $0, name: ($0 as NSString).lastPathComponent) }, context, .spotlight)
+                } else if !names.isEmpty {
+                    onPick(panel.picks, context, .axPanel) // name only: recorded with Low confidence (FR-6)
+                }
+            }
             log.add("RESULT", Self.verdict(fromA: fromA, fromB: Set(fromB), aHadNames: !names.isEmpty, closedBy: closedBy))
         }
     }

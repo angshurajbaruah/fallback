@@ -1,26 +1,43 @@
 import AppKit
 
+/// Where a pick is going, captured when the panel opens (FR-4).
+struct PanelContext: Sendable {
+    var appName: String
+    var bundleID: String
+    var windowTitle: String?
+    var url: String?
+    var tabTitle: String?
+    /// Why the tab address is missing, for the debug log.
+    var note: String?
+
+    /// The title that best describes the page: the tab title for browsers, else the window title.
+    var pageTitle: String? { tabTitle ?? windowTitle }
+}
+
 /// Captures where a pick is going, at the moment the panel opens (FR-4, PRD 9.3 step 3).
 @MainActor
 enum ContextResolver {
-    static func capture(host: NSRunningApplication, panel: AXUIElement) -> [String] {
+    static func capture(host: NSRunningApplication, panel: AXUIElement) -> PanelContext {
         // A sheet's parent is the window it's attached to; otherwise use the app's focused window.
         let window = panel.role == "AXSheet" ? panel.element(kAXParentAttribute)
             : AXUIElementCreateApplication(host.processIdentifier).element(kAXFocusedWindowAttribute)
-        let title = window?.string(kAXTitleAttribute) ?? "—"
-        var lines = ["window title “\(title)” (Accessibility)"]
-        guard let id = host.bundleIdentifier, let script = tabScript(for: id) else {
-            lines.append("no tab address for this app, window title only")
-            return lines
+        let bundleID = host.bundleIdentifier ?? "unknown"
+        var context = PanelContext(appName: host.localizedName?.trimmingCharacters(in: .controlCharacters.union(.init(charactersIn: "\u{200E}"))) ?? bundleID,
+                                   bundleID: bundleID,
+                                   windowTitle: window?.string(kAXTitleAttribute).flatMap { $0.isEmpty ? nil : $0 })
+        guard let script = tabScript(for: bundleID) else {
+            context.note = "no tab address for this app, window title only"
+            return context
         }
         var error: NSDictionary?
         let result = NSAppleScript(source: script)?.executeAndReturnError(&error).stringValue
         if let parts = result?.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false), parts.count == 2 {
-            lines.append("tab \(parts[0])  “\(parts[1])” (Apple Events)")
+            context.url = String(parts[0])
+            context.tabTitle = String(parts[1])
         } else {
-            lines.append("✗ couldn't read the tab (Apple Events): \(describe(error))")
+            context.note = "✗ couldn't read the tab (Apple Events): \(describe(error))"
         }
-        return lines
+        return context
     }
 
     private static func tabScript(for bundleID: String) -> String? {
@@ -32,7 +49,7 @@ enum ContextResolver {
         } else {
             return nil
         }
-        // shortcut: runs on the main thread with a 2 s cap; move off-main in M2 if it ever stalls.
+        // shortcut: runs on the main thread with a 2 s cap; it never stalled in M1 testing. Move off-main if it does.
         return """
         with timeout of 2 seconds
             tell application id "\(bundleID)" to \(body)

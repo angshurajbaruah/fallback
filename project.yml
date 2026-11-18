@@ -14,7 +14,11 @@ targets:
   Fallback:
     type: application
     platform: macOS
-    sources: [App]
+    sources:
+      - App
+      - Resources
+      - path: Testing/upload-test.html # "Try it on a test page" in the empty popover
+        buildPhase: resources
     dependencies:
       - package: FallbackCore
     settings:
@@ -28,6 +32,7 @@ targets:
         DEVELOPMENT_TEAM: YM6Q5VGJZK # Personal Team: stable signature so macOS keeps permissions across rebuilds
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "Apple Development"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_CFBundleDisplayName: Fallback
