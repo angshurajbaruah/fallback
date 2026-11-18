@@ -65,6 +65,7 @@ final class PanelWatcher {
               front.processIdentifier == host.processIdentifier || front.bundleIdentifier == Self.panelService
         else { return }
 
+        noteUnseenFocus()
         for (element, viaService) in candidates(host: host) {
             let hash = Int(bitPattern: CFHash(element))
             guard !rejected.contains(hash) else { continue }
@@ -85,6 +86,31 @@ final class PanelWatcher {
             begin(element, button: ok, cancel: cancel, host: host, viaService: viaService)
             return
         }
+    }
+
+    private var lastUnseen = ""
+
+    /// Spike diagnostic: keyboard focus is in a file list but no panel was found. Logs who owns it
+    /// and the parents above it, once per change, to show where the panel lives.
+    private func noteUnseenFocus() {
+        guard let app = AXUIElementCreateSystemWide().element(kAXFocusedApplicationAttribute),
+              let focused = app.element(kAXFocusedUIElementAttribute),
+              let role = focused.role, ["AXList", "AXOutline", "AXTable", "AXBrowser"].contains(role)
+        else { return }
+        var pid: pid_t = 0
+        AXUIElementGetPid(app, &pid)
+        var chain: [String] = []
+        var node: AXUIElement? = focused
+        while let current = node, chain.count < 15 {
+            if current.role == "AXWebArea" { return } // a list inside a web page, not a panel
+            chain.append(Self.shape(current))
+            node = current.element(kAXParentAttribute)
+        }
+        let owner = NSRunningApplication(processIdentifier: pid).map { "\($0.localizedName ?? "?") (\($0.bundleIdentifier ?? "?"))" } ?? "pid \(pid)"
+        let line = "focus in \(owner): \(chain.joined(separator: " < "))"
+        guard line != lastUnseen else { return }
+        lastUnseen = line
+        log.add("UNSEEN", line)
     }
 
     private var rejected: Set<Int> = []

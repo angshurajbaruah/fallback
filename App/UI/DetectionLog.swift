@@ -13,7 +13,7 @@ final class DetectionLog {
         let text: String
 
         var line: String {
-            "\(time.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits)))  "
+            "\(time.formatted(.verbatim("\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits):\(second: .twoDigits)", timeZone: .current, calendar: .current)))  "
                 + tag.padding(toLength: 11, withPad: " ", startingAt: 0) + text
         }
     }
