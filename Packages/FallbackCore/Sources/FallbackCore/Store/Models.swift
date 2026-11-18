@@ -52,6 +52,10 @@ public struct SendRow: Sendable, Identifiable, Hashable, Decodable, FetchableRec
     /// From document families (M3): v5, whether it's a tailored variant, and which document.
     public var versionNumber: Int?
     public var isVariant: Bool?
+    /// Set when the sent file is an exported PDF of another file in its family.
+    public var exportOfID: Int64?
+    public var fileExt: String?
+    public var familyFormat: String?
     public var familyID: Int64?
     public var familyName: String?
 

@@ -18,13 +18,22 @@ struct DocumentDetailView: View {
     @State private var merging: [Int64]?
     @State private var splitting: FamilyMember?
 
+    /// Versions oldest to newest; within a version number, the main format first and its exports after.
     private var versions: [FamilyMember] {
-        let list = members.filter { !$0.isVariant && matches($0) }.sorted { ($0.versionNumber ?? 0) < ($1.versionNumber ?? 0) }
+        let list = members.filter { !$0.isVariant && matches($0) }.sorted {
+            ($0.versionNumber ?? 0, $0.exportOfID == nil ? 1 : 0) < ($1.versionNumber ?? 0, $1.exportOfID == nil ? 1 : 0)
+        }
         return newestFirst ? list.reversed() : list
     }
 
+    /// Only the newest file in the family's main format is "newest"; exports never are.
+    private func isNewest(_ member: FamilyMember) -> Bool {
+        member.exportOfID == nil && member.versionNumber == family?.newestVersion
+            && (member.name as NSString).pathExtension.lowercased() == family?.mainFormat
+    }
+
     private var variants: [FamilyMember] { members.filter { $0.isVariant && matches($0) } }
-    private var newestVersion: Int? { members.compactMap(\.versionNumber).max() }
+    private var newestVersion: Int? { family?.newestVersion }
 
     private func matches(_ member: FamilyMember) -> Bool {
         let text = query.trimmingCharacters(in: .whitespaces)
@@ -150,17 +159,17 @@ struct DocumentDetailView: View {
             SectionLabel(text: "Version timeline").padding(.bottom, 4)
             ForEach(Array(versions.enumerated()), id: \.element.id) { index, member in
                 HStack(alignment: .top, spacing: 16) {
-                    VersionChip(label: member.versionLabel ?? "–", current: member.versionNumber == newestVersion)
+                    VersionChip(label: member.versionLabel ?? "–", current: isNewest(member))
                         .frame(width: 34).padding(.top, 30)
                     ZStack(alignment: .top) {
                         Rectangle().fill(Theme.line2).frame(width: 1)
                             .padding(.bottom, index == versions.count - 1 ? 60 : -14)
-                        Circle().fill(member.versionNumber == newestVersion ? Theme.frostedBlue : Theme.grey)
-                            .frame(width: member.versionNumber == newestVersion ? 14 : 9, height: member.versionNumber == newestVersion ? 14 : 9)
-                            .padding(.top, member.versionNumber == newestVersion ? 31 : 33)
+                        Circle().fill(isNewest(member) ? Theme.frostedBlue : Theme.grey)
+                            .frame(width: isNewest(member) ? 14 : 9, height: isNewest(member) ? 14 : 9)
+                            .padding(.top, isNewest(member) ? 31 : 33)
                     }
                     .frame(width: 14)
-                    versionCard(member, newest: member.versionNumber == newestVersion)
+                    versionCard(member, newest: isNewest(member))
                 }
             }
         }
@@ -175,6 +184,9 @@ struct DocumentDetailView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(member.name).font(Theme.bodyMedium)
                     Text(Self.facts(member, newest: newest)).font(Theme.caption).foregroundStyle(Theme.textMuted)
+                    if let source = members.first(where: { $0.id == member.exportOfID }) {
+                        Text("Exported from \(source.name)").font(Theme.caption).foregroundStyle(Theme.textMuted)
+                    }
                 }
                 Spacer()
                 Group {
@@ -276,7 +288,7 @@ struct DocumentDetailView: View {
     private var wentTo: [(label: String, versions: [Int])] {
         var map: [String: Set<Int>] = [:]
         var latest: [String: Date] = [:]
-        for member in members where !member.isVariant {
+        for member in members where !member.isVariant && member.exportOfID == nil {
             for send in sends[member.id] ?? [] {
                 if let version = member.versionNumber { map[send.destinationLabel, default: []].insert(version) }
                 latest[send.destinationLabel] = max(latest[send.destinationLabel] ?? .distantPast, send.sentAt)

@@ -265,8 +265,14 @@ struct SendInspector: View {
                      + Text(" from \(shortAppName(send.appName)) · \(SendTime.long(send.sentAt))"))
                         .font(Theme.caption).foregroundStyle(Theme.textMuted).padding(.top, 4)
                     HStack(spacing: 6) {
-                        if let label = send.versionLabel {
-                            Text(label + (send.versionNumber == family?.newestVersion ? " · newest" : ""))
+                        if send.exportOfID != nil {
+                            Text("\((send.fileExt ?? "PDF").uppercased()) export")
+                                .font(Theme.caption.weight(.semibold)).foregroundStyle(Theme.textMuted)
+                                .padding(.horizontal, 8).frame(height: Theme.chipHeight + 4)
+                                .background(Theme.hoverFill, in: RoundedRectangle(cornerRadius: Theme.chipRadius))
+                        } else if let label = send.versionLabel {
+                            let newest = send.versionNumber == family?.newestVersion && send.fileExt == family?.mainFormat
+                            Text(label + (newest ? " · newest" : ""))
                                 .font(Theme.caption.weight(.semibold)).foregroundStyle(Theme.primary)
                                 .padding(.horizontal, 8).frame(height: Theme.chipHeight + 4)
                                 .background(Theme.infoTint, in: RoundedRectangle(cornerRadius: Theme.chipRadius))

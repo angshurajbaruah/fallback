@@ -122,5 +122,13 @@ enum Migrations {
             CREATE INDEX family_links_files ON family_links(file_a_id, file_b_id);
             """)
         }
+
+        // Versions are numbered per format; exported PDFs point at their source (PRD 8.3).
+        migrator.registerMigration("v3") { db in
+            try db.execute(sql: """
+            ALTER TABLE families ADD COLUMN main_format TEXT;
+            ALTER TABLE files ADD COLUMN export_of_id INTEGER REFERENCES files(id) ON DELETE SET NULL;
+            """)
+        }
     }
 }

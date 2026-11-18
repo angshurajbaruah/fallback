@@ -78,12 +78,19 @@ public struct FamilyGroup: Sendable, Equatable {
     /// Every member, oldest to newest.
     public var members: [Int64]
     public var name: String
-    /// Version number per non-variant member: v1 is the oldest.
+    /// Version number per non-variant member, counted separately for each format (PDFs among PDFs,
+    /// Word files among Word files): v1 is the oldest. An exported PDF is never a "newer version" of its source.
     public var versions: [Int64: Int]
+    /// Export pairs (PRD 8.3): exported PDF → the document it came from. Used by W5 only.
+    public var exportOf: [Int64: Int64]
     public var variants: Set<Int64>
     public var confidence: LinkConfidence
     public var signals: Set<LinkSignal>
-    public var newest: Int64? { members.last { versions[$0] != nil } }
+    /// The newest version in the family's main format (the format most of its versions are in).
+    public var newest: Int64? { members.last { versions[$0] != nil && formats[$0] == mainFormat } }
+    /// Each member's file extension, and the family's main one.
+    public var formats: [Int64: String]
+    public var mainFormat: String?
 }
 
 public struct FamilyResult: Sendable {
@@ -261,12 +268,26 @@ public enum FamilyEngine {
             return words.isSuperset(of: baseWords) && words.subtracting(baseWords).contains(where: isNameWord)
         }.map(\.id))
         let ordered = ordered(files)
+        // Versions are numbered within each format, so an export pair (Proposal.docx + Proposal.pdf)
+        // is two v1s, not "v1 and its newer v2" (PRD 8.3: exports are never newer or older versions).
         var versions: [Int64: Int] = [:]
-        for (index, file) in ordered.filter({ !variants.contains($0.id) }).enumerated() { versions[file.id] = index + 1 }
+        let lines = Dictionary(grouping: ordered.filter { !variants.contains($0.id) }, by: \.ext)
+        for line in lines.values { for (index, file) in line.enumerated() { versions[file.id] = index + 1 } }
+        // The format with the most versions; on a tie, the source rather than the PDF made from it.
+        let mainFormat = lines.max { a, b in
+            (a.value.count, a.key == "pdf" ? 0 : 1, b.key) < (b.value.count, b.key == "pdf" ? 0 : 1, a.key)
+        }?.key
+        var exportOf: [Int64: Int64] = [:]
+        let byID = Dictionary(uniqueKeysWithValues: files.map { ($0.id, $0) })
+        for link in links where link.relation == .export {
+            guard let a = byID[link.a], let b = byID[link.b] else { continue }
+            if a.ext == "pdf" { exportOf[a.id] = b.id } else { exportOf[b.id] = a.id }
+        }
         let name = base.map(titleCased) ?? files.first.map { ($0.name as NSString).deletingPathExtension } ?? "Document"
-        return FamilyGroup(members: ordered.map(\.id), name: name, versions: versions, variants: variants,
+        return FamilyGroup(members: ordered.map(\.id), name: name, versions: versions, exportOf: exportOf, variants: variants,
                            confidence: links.map(\.confidence).max() ?? (files.count > 1 ? .high : .low),
-                           signals: Set(links.filter { $0.confidence == .high }.flatMap(\.signals)))
+                           signals: Set(links.filter { $0.confidence == .high }.flatMap(\.signals)),
+                           formats: Dictionary(uniqueKeysWithValues: files.map { ($0.id, $0.ext) }), mainFormat: mainFormat)
     }
 
     static func titleCased(_ stem: String) -> String {

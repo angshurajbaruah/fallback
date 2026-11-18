@@ -10,7 +10,9 @@ public struct FamilySummary: Sendable, Identifiable, Hashable, Decodable, Fetcha
     public var variantCount: Int
     public var sendCount: Int
     public var placeCount: Int
+    /// Newest version in the family's main format.
     public var newestVersion: Int?
+    public var mainFormat: String?
     public var confidence: String?
     public var signals: String?
     public var extensions: String?
@@ -30,6 +32,8 @@ public struct FamilyMember: Sendable, Identifiable, Hashable, Decodable, Fetchab
     public var docTitle: String?
     public var versionNumber: Int?
     public var isVariant: Bool
+    /// Set on an exported PDF: the file it was made from (an export pair, not a newer version).
+    public var exportOfID: Int64?
     public var familyID: Int64?
 
     public var editedAt: Date? { docModifiedAt ?? modifiedAt }
@@ -168,7 +172,7 @@ extension Store {
             let stems = Dictionary(uniqueKeysWithValues: try Row.fetchAll(db, sql: "SELECT id, stem FROM files")
                 .map { ($0[0] as Int64, $0[1] as String?) })
             var claimed = Set<Int64>()
-            try db.execute(sql: "UPDATE files SET family_id = NULL, version_number = NULL, is_variant = 0")
+            try db.execute(sql: "UPDATE files SET family_id = NULL, version_number = NULL, is_variant = 0, export_of_id = NULL")
             // Bigger groups first, so they keep their family ids.
             for group in result.groups.sorted(by: { $0.members.count > $1.members.count }) {
                 // A lone file with a too-generic name has no family (PRD 10).
@@ -180,19 +184,19 @@ extension Store {
                 if let reuse = counts.max(by: { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value })?.key {
                     familyID = reuse
                     try db.execute(sql: """
-                        UPDATE families SET stem = ?, confidence = ?, signals = ?,
+                        UPDATE families SET stem = ?, confidence = ?, signals = ?, main_format = ?,
                             display_name = CASE name_source WHEN 'user' THEN display_name ELSE ? END
                         WHERE id = ?
-                        """, arguments: [group.name.lowercased(), group.confidence.name, signals, group.name, familyID])
+                        """, arguments: [group.name.lowercased(), group.confidence.name, signals, group.mainFormat, group.name, familyID])
                 } else {
-                    try db.execute(sql: "INSERT INTO families (stem, display_name, confidence, signals) VALUES (?, ?, ?, ?)",
-                                   arguments: [group.name.lowercased(), group.name, group.confidence.name, signals])
+                    try db.execute(sql: "INSERT INTO families (stem, display_name, confidence, signals, main_format) VALUES (?, ?, ?, ?, ?)",
+                                   arguments: [group.name.lowercased(), group.name, group.confidence.name, signals, group.mainFormat])
                     familyID = db.lastInsertedRowID
                 }
                 claimed.insert(familyID)
                 for id in group.members {
-                    try db.execute(sql: "UPDATE files SET family_id = ?, version_number = ?, is_variant = ? WHERE id = ?",
-                                   arguments: [familyID, group.versions[id], group.variants.contains(id), id])
+                    try db.execute(sql: "UPDATE files SET family_id = ?, version_number = ?, is_variant = ?, export_of_id = ? WHERE id = ?",
+                                   arguments: [familyID, group.versions[id], group.variants.contains(id), group.exportOf[id], id])
                 }
             }
             try db.execute(sql: "DELETE FROM families WHERE id NOT IN (SELECT family_id FROM files WHERE family_id IS NOT NULL)")
@@ -220,10 +224,11 @@ extension Store {
             try FamilySummary.fetchAll(db, sql: """
                 SELECT fam.id AS id, fam.display_name AS name,
                        COUNT(DISTINCT f.id) AS memberCount,
-                       COUNT(DISTINCT CASE WHEN f.version_number IS NOT NULL THEN f.id END) AS versionCount,
+                       COUNT(DISTINCT CASE WHEN f.version_number IS NOT NULL AND f.ext IS fam.main_format THEN f.id END) AS versionCount,
                        COUNT(DISTINCT CASE WHEN f.is_variant THEN f.id END) AS variantCount,
                        COUNT(DISTINCT s.id) AS sendCount, COUNT(DISTINCT s.destination_id) AS placeCount,
-                       MAX(f.version_number) AS newestVersion, fam.confidence AS confidence, fam.signals AS signals,
+                       MAX(CASE WHEN f.ext IS fam.main_format THEN f.version_number END) AS newestVersion,
+                       fam.confidence AS confidence, fam.signals AS signals, fam.main_format AS mainFormat,
                        GROUP_CONCAT(DISTINCT f.ext) AS extensions,
                        MAX(COALESCE(s.sent_at, f.doc_modified_at, f.modified_at)) AS lastActivity
                 FROM families fam
@@ -250,7 +255,7 @@ extension Store {
     private static let selectMembers = """
         SELECT id, name, path, size_bytes AS sizeBytes, sha256, modified_at AS modifiedAt,
                doc_modified_at AS docModifiedAt, where_from AS whereFrom, doc_title AS docTitle, version_number AS versionNumber,
-               is_variant AS isVariant, family_id AS familyID
+               is_variant AS isVariant, export_of_id AS exportOfID, family_id AS familyID
         FROM files
         """
 

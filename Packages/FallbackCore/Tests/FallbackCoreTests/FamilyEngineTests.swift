@@ -325,6 +325,32 @@ struct FamilyEngineTests {
         #expect(group.newest == 2)
     }
 
+    /// PRD 8.3: an export pair is used by W5 only and is never a newer or older version.
+    @Test func exportPair_isNeverOrderedAsVersions() {
+        let docx = file(1, "Proposal_Acme.docx", text: Fixtures.proposal, edited: 0)
+        let pdf = file(2, "Proposal_Acme.pdf", text: Fixtures.proposal, edited: day) // exported later
+        let group = FamilyEngine.build(files: [docx, pdf]).groups.first!
+        #expect(group.members.count == 2)
+        #expect(group.versions == [1: 1, 2: 1])   // each is v1 of its own format, not "v1 then v2"
+        #expect(group.exportOf == [2: 1])         // the PDF was made from the Word file
+        #expect(group.mainFormat == "docx")       // on a tie, the source is the main format
+        #expect(group.newest == 1)
+    }
+
+    @Test func mixedFormats_numberedPerFormat() {
+        let files = [
+            file(1, "resume_v1.pdf", text: Fixtures.resume, edited: 0),
+            file(2, "resume_v2.pdf", text: Fixtures.resume, edited: day),
+            file(3, "resume.docx", text: Fixtures.resume, edited: 2 * day),
+            file(4, "resume_v3.pdf", text: Fixtures.resume, edited: 3 * day),
+        ]
+        let group = FamilyEngine.build(files: files).groups.first!
+        #expect(group.versions == [1: 1, 2: 2, 4: 3, 3: 1])
+        #expect(group.mainFormat == "pdf")
+        #expect(group.newest == 4)
+        #expect(Set(group.exportOf.values) == [3]) // the PDFs pair with the Word source
+    }
+
     @Test func singleFileIsItsOwnFamily() {
         let result = FamilyEngine.build(files: [file(1, "Invoice_Nov_Acme.pdf")])
         #expect(result.groups.count == 1 && result.groups[0].versions == [1: 1])

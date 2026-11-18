@@ -112,6 +112,7 @@ public final class Store: Sendable {
                d.label AS destinationLabel, s.app_bundle_id AS appBundleID, s.app_name AS appName,
                s.url AS url, s.page_title AS pageTitle, s.confidence AS confidence, s.sent_at AS sentAt,
                s.file_id AS fileID, f.version_number AS versionNumber, f.is_variant AS isVariant,
+               f.export_of_id AS exportOfID, f.ext AS fileExt, fam.main_format AS familyFormat,
                f.family_id AS familyID, fam.display_name AS familyName
         FROM sends s
         JOIN destinations d ON d.id = s.destination_id
