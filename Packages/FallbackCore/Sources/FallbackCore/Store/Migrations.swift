@@ -104,5 +104,23 @@ enum Migrations {
             END;
             """)
         }
+
+        // M3: what the indexer and FamilyEngine need (PRD 8.3, 9.6).
+        migrator.registerMigration("v2") { db in
+            try db.execute(sql: """
+            ALTER TABLE files ADD COLUMN created_at DATETIME;
+            ALTER TABLE files ADD COLUMN downloaded_at DATETIME;
+            ALTER TABLE files ADD COLUMN doc_modified_at DATETIME;
+            ALTER TABLE files ADD COLUMN version_number INTEGER;
+            ALTER TABLE files ADD COLUMN is_variant BOOLEAN NOT NULL DEFAULT 0;
+            CREATE INDEX files_family ON files(family_id);
+            CREATE INDEX files_identity_path ON files(path, file_identity);
+            ALTER TABLE families ADD COLUMN name_source TEXT NOT NULL DEFAULT 'auto';
+            ALTER TABLE families ADD COLUMN confidence TEXT;
+            ALTER TABLE families ADD COLUMN signals TEXT;
+            ALTER TABLE family_links ADD COLUMN reasons TEXT;
+            CREATE INDEX family_links_files ON family_links(file_a_id, file_b_id);
+            """)
+        }
     }
 }

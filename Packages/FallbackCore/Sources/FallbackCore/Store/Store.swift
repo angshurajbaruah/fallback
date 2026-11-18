@@ -3,7 +3,7 @@ import GRDB
 
 /// The ledger database (PRD 10): one SQLite file in WAL mode, all times in UTC.
 public final class Store: Sendable {
-    private let db: any DatabaseWriter
+    let db: any DatabaseWriter
 
     /// Opens (or creates) the database file and runs any new migrations.
     public convenience init(path: String) throws {
@@ -24,10 +24,19 @@ public final class Store: Sendable {
 
     // MARK: Recording (FR-9)
 
+    /// Records a send with only the file's basic facts (the file is analysed by the indexer separately).
     @discardableResult
     public func record(_ send: NewSend, destination: Destination, facts: FileFacts?) throws -> Int64 {
-        try db.write { db in
-            let fileID = try send.path.map { try upsertFile(path: $0, name: send.fileName, facts: facts, at: send.sentAt, db) }
+        let file = send.path.map { IndexedFile(path: $0, name: send.fileName, facts: facts ?? FileFacts()) }
+        return try record(send, destination: destination, file: file)
+    }
+
+    /// Records a send. Files picked from outside watched folders are still fingerprinted and kept (FR-19).
+    @discardableResult
+    public func record(_ send: NewSend, destination: Destination, file: IndexedFile?, inWatchedFolder: Bool = false) throws -> Int64 {
+        let facts = file?.facts
+        return try db.write { db in
+            let fileID = try file.map { try upsert($0, inWatchedFolder: inWatchedFolder, at: send.sentAt, db) }
             let destinationID = try destinationID(for: destination, db)
             let confidence = Confidence(fileKnown: send.path != nil, urlKnown: send.url != nil)
             try db.execute(sql: """
@@ -40,24 +49,44 @@ public final class Store: Sendable {
         }
     }
 
-    private func upsertFile(path: String, name: String, facts: FileFacts?, at date: Date, _ db: Database) throws -> Int64 {
-        let ext = (name as NSString).pathExtension.lowercased()
-        let existing: Int64? = if let identity = facts?.identity {
-            try Int64.fetchOne(db, sql: "SELECT id FROM files WHERE file_identity = ?", arguments: [identity])
-        } else {
-            try Int64.fetchOne(db, sql: "SELECT id FROM files WHERE path = ? AND file_identity IS NULL", arguments: [path])
+    /// One row per file, followed across renames and moves by its identity (FR-17). When an app saves by
+    /// replacing the file (new identity, same path), the row at that path is kept.
+    func upsert(_ file: IndexedFile, inWatchedFolder: Bool, at date: Date, _ db: Database) throws -> Int64 {
+        let ext = (file.name as NSString).pathExtension.lowercased()
+        var existing: Int64?
+        if let identity = file.facts.identity {
+            existing = try Int64.fetchOne(db, sql: "SELECT id FROM files WHERE file_identity = ?", arguments: [identity])
         }
+        if existing == nil {
+            existing = try Int64.fetchOne(db, sql: "SELECT id FROM files WHERE path = ? ORDER BY id DESC LIMIT 1", arguments: [file.path])
+        }
+        let analysed = file.textSignature != nil || file.imageHash != nil || file.docTitle != nil || file.docInternalID != nil
+        let values: [(String, (any DatabaseValueConvertible)?)] = [
+            ("file_identity", file.facts.identity), ("path", file.path), ("name", file.name), ("ext", ext),
+            ("stem", NameStem.stem(file.name)), ("sha256", file.facts.sha256), ("size_bytes", file.facts.sizeBytes),
+            ("modified_at", file.facts.modifiedAt), ("created_at", file.createdAt), ("last_seen_at", date),
+            ("where_from", file.whereFrom), ("downloaded_at", file.downloadedAt),
+        ] + (analysed || existing == nil ? [
+            ("doc_title", file.docTitle), ("doc_author", file.docAuthor), ("doc_created_at", file.docCreatedAt),
+            ("doc_modified_at", file.docModifiedAt), ("doc_internal_id", file.docInternalID),
+            ("text_signature", file.textSignature.map(TextSignature.data)),
+            // 8 bytes of layout hash, then 4 bytes of average colour.
+            ("image_signature", file.imageHash.map { hash in
+                withUnsafeBytes(of: hash) { Data($0) } + withUnsafeBytes(of: file.imageColor ?? 0) { Data($0) }
+            }),
+        ] : [])
         if let existing {
-            try db.execute(sql: """
-                UPDATE files SET path = ?, name = ?, ext = ?, sha256 = ?, size_bytes = ?, modified_at = ?, last_seen_at = ?
-                WHERE id = ?
-                """, arguments: [path, name, ext, facts?.sha256, facts?.sizeBytes, facts?.modifiedAt, date, existing])
+            let sets = values.map { "\($0.0) = ?" }.joined(separator: ", ")
+            var arguments = StatementArguments(values.map(\.1))
+            arguments += [inWatchedFolder, existing]
+            try db.execute(sql: "UPDATE files SET \(sets), in_watched_folder = MAX(in_watched_folder, ?) WHERE id = ?", arguments: arguments)
             return existing
         }
-        try db.execute(sql: """
-            INSERT INTO files (file_identity, path, name, ext, sha256, size_bytes, modified_at, first_seen_at, last_seen_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, arguments: [facts?.identity, path, name, ext, facts?.sha256, facts?.sizeBytes, facts?.modifiedAt, date, date])
+        let columns = values.map(\.0) + ["first_seen_at", "in_watched_folder"]
+        var arguments = StatementArguments(values.map(\.1))
+        arguments += [date, inWatchedFolder]
+        try db.execute(sql: "INSERT INTO files (\(columns.joined(separator: ", "))) VALUES (\(Array(repeating: "?", count: columns.count).joined(separator: ", ")))",
+                       arguments: arguments)
         return db.lastInsertedRowID
     }
 
@@ -75,14 +104,19 @@ public final class Store: Sendable {
 
     // MARK: Reading (FR-10, FR-11)
 
+    static var selectSendsSQL: String { selectSends }
+
     private static let selectSends = """
         SELECT s.id AS id, s.file_name_at_send AS fileName, f.path AS path, s.sha256 AS sha256,
                f.size_bytes AS sizeBytes, d.id AS destinationID, d.key AS destinationKey,
                d.label AS destinationLabel, s.app_bundle_id AS appBundleID, s.app_name AS appName,
-               s.url AS url, s.page_title AS pageTitle, s.confidence AS confidence, s.sent_at AS sentAt
+               s.url AS url, s.page_title AS pageTitle, s.confidence AS confidence, s.sent_at AS sentAt,
+               s.file_id AS fileID, f.version_number AS versionNumber, f.is_variant AS isVariant,
+               f.family_id AS familyID, fam.display_name AS familyName
         FROM sends s
         JOIN destinations d ON d.id = s.destination_id
         LEFT JOIN files f ON f.id = s.file_id
+        LEFT JOIN families fam ON fam.id = f.family_id
         """
 
     /// Newest first by default; `since` limits to a period (Today, 7 days).

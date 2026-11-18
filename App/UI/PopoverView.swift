@@ -16,6 +16,7 @@ struct PopoverView: View {
     @State private var results: [SendRow] = []
     @State private var summary: DestinationSummary?
     @State private var suggestion: DestinationSummary?
+    @State private var alsoMatching: [FamilyMember] = []
     @State private var showWhy = false
 
     var body: some View {
@@ -51,7 +52,7 @@ struct PopoverView: View {
             SectionLabel(text: "Recent").padding(.leading, 8)
             rows(Array(recent.prefix(3)), dimmed: true)
         } else if !query.trimmingCharacters(in: .whitespaces).isEmpty {
-            if results.isEmpty { noResults } else { searchResults }
+            if results.isEmpty && alsoMatching.isEmpty { noResults } else { searchResults }
         } else if total == 0 {
             statusLine(detail: "ready")
             emptyState
@@ -63,11 +64,10 @@ struct PopoverView: View {
     }
 
     private func statusLine(detail: String) -> some View {
-        // "Watching {n} folders" waits for folder watching (M3).
         HStack(spacing: 7) {
             Circle().fill(Theme.frostedBlue).frame(width: 7, height: 7)
                 .overlay(Circle().stroke(Theme.frostedBlue.opacity(0.3), lineWidth: 3))
-            Text("Watching · \(detail)").font(Theme.caption).foregroundStyle(Theme.text)
+            Text("\(model.folders.isEmpty ? "Watching" : model.foldersPhrase) · \(detail)").font(Theme.caption).foregroundStyle(Theme.text)
             Spacer()
         }
         .padding(.horizontal, 8)
@@ -76,7 +76,7 @@ struct PopoverView: View {
     private func rows(_ sends: [SendRow], dimmed: Bool = false) -> some View {
         VStack(spacing: 0) {
             ForEach(sends) { send in
-                PopoverRow(title: send.fileName, subtitle: sendSubtitle(send), dimmed: dimmed) { openLedger(.allSends(selected: send.id)) }
+                PopoverRow(title: send.fileName, subtitle: sendSubtitle(send), version: send.versionLabel, dimmed: dimmed) { openLedger(.allSends(selected: send.id)) }
             }
         }
     }
@@ -104,9 +104,18 @@ struct PopoverView: View {
             ForEach(results.prefix(10)) { send in
                 PopoverRow(title: send.fileName,
                            subtitle: [SendTime.long(send.sentAt), shortAppName(send.appName), send.pageTitle ?? send.destinationLabel]
-                            .joined(separator: " · ")) { openLedger(.allSends(selected: send.id)) }
+                            .joined(separator: " · "),
+                           version: send.versionLabel) { openLedger(.allSends(selected: send.id)) }
             }
-            // "Also matching" (downloaded, not sent) waits for file indexing (M3).
+            if !alsoMatching.isEmpty {
+                SectionLabel(text: "Also matching").padding(.leading, 8).padding(.top, 8).padding(.bottom, 4)
+                ForEach(alsoMatching) { file in
+                    PopoverRow(title: file.name, subtitle: file.whereFrom == nil ? "Not sent" : "Downloaded · not sent",
+                               dimmed: true) {
+                        if let path = file.path { NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)]) }
+                    }
+                }
+            }
         }
     }
 
@@ -262,8 +271,9 @@ struct PopoverView: View {
         recent = (try? store.sends(limit: 10)) ?? []
         total = (try? store.sendCount()) ?? 0
         let text = query.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { results = []; summary = nil; suggestion = nil; return }
+        guard !text.isEmpty else { results = []; summary = nil; suggestion = nil; alsoMatching = []; return }
         results = (try? store.search(text)) ?? []
+        alsoMatching = (try? store.unsentFiles(matching: text)) ?? []
         let lowered = text.lowercased()
         summary = (try? store.destinations())?.first { $0.label.lowercased().contains(lowered) }
         suggestion = results.isEmpty ? (try? store.closestDestination(to: text)) : nil
@@ -274,6 +284,7 @@ struct PopoverView: View {
 private struct PopoverRow: View {
     var title: String
     var subtitle: String
+    var version: String? = nil
     var dimmed = false
     var action: () -> Void
     @State private var hovering = false
@@ -287,7 +298,7 @@ private struct PopoverRow: View {
                     Text(subtitle).font(Theme.caption).foregroundStyle(Theme.textMuted).lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                // The version chip (v5) arrives with document families (M3).
+                if let version { VersionChip(label: version).opacity(dimmed ? 0.5 : 1) }
             }
             .padding(.horizontal, 8)
             .frame(height: Theme.popoverRowHeight)

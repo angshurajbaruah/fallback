@@ -98,15 +98,25 @@ struct ByDestinationView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // "Latest … they have" and "Also has" cards need document families (M3).
-                    VStack(alignment: .leading, spacing: 8) {
-                        SectionLabel(text: "Sends")
-                        Text("\(place.sendCount)").font(Theme.statNumber)
+                    HStack(spacing: 16) {
+                        statCard("Sends") { Text("\(place.sendCount)").font(Theme.statNumber) }
+                        if let latest = mainFamily {
+                            statCard("Latest \(latest.name.lowercased()) they have") {
+                                HStack(spacing: 8) {
+                                    VersionChip(label: latest.newest.versionLabel ?? "")
+                                    Text("sent \(SendTime.day(latest.newest.sentAt))").font(Theme.body)
+                                }
+                            }
+                            if !latest.older.isEmpty {
+                                statCard("Also has") {
+                                    HStack(spacing: 6) {
+                                        ForEach(latest.older, id: \.self) { VersionChip(label: $0, current: false) }
+                                        Text("older \(latest.name.lowercased())s").font(Theme.body).foregroundStyle(Theme.textMuted)
+                                    }
+                                }
+                            }
+                        }
                     }
-                    .padding(16)
-                    .frame(width: 230, alignment: .leading)
-                    .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line))
 
                     SectionLabel(text: "Timeline").padding(.top, 28).padding(.bottom, 12)
                     ForEach(Array(timeline.enumerated()), id: \.element.id) { index, send in
@@ -117,6 +127,28 @@ struct ByDestinationView: View {
             }
         }
         .sheet(isPresented: $renaming) { RenameSheet(target: .destination(place, seen: details[place.id] ?? place.key)) }
+    }
+
+    private func statCard<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel(text: label)
+            content()
+        }
+        .padding(18)
+        .frame(maxWidth: 300, minHeight: 100, alignment: .topLeading)
+        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line))
+    }
+
+    /// The document this place received most often: its newest version sent here, and the older ones.
+    private var mainFamily: (name: String, newest: SendRow, older: [String])? {
+        let versioned = timeline.filter { $0.familyName != nil && $0.versionNumber != nil }
+        let counts = Dictionary(versioned.map { ($0.familyID ?? -1, 1) }, uniquingKeysWith: +)
+        guard let familyID = counts.max(by: { $0.value < $1.value })?.key else { return nil }
+        let sent = versioned.filter { $0.familyID == familyID }
+        guard let newest = sent.max(by: { ($0.versionNumber ?? 0) < ($1.versionNumber ?? 0) }) else { return nil }
+        let older = Set(sent.compactMap(\.versionNumber)).filter { $0 < (newest.versionNumber ?? 0) }.sorted(by: >).map { "v\($0)" }
+        return (newest.familyName ?? "", newest, older)
     }
 
     private func timelineRow(_ send: SendRow, first: Bool, last: Bool) -> some View {
@@ -138,6 +170,7 @@ struct ByDestinationView: View {
                             .font(Theme.caption).foregroundStyle(Theme.textMuted).lineLimit(1)
                     }
                     Spacer()
+                    if let version = send.versionLabel { VersionChip(label: version, current: first) }
                 }
                 .padding(.horizontal, 14)
                 .frame(height: 50)

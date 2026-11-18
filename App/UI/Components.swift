@@ -245,3 +245,66 @@ enum SendTime {
         return "Earlier"
     }
 }
+
+/// "v5" chip: Frosted Blue tint for current versions, grey for older ones (BRAND.md "Version chip").
+struct VersionChip: View {
+    var label: String
+    var current = true
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 11.5, weight: .semibold))
+            .foregroundStyle(current ? Theme.primary : Theme.textMuted)
+            .padding(.horizontal, 6)
+            .frame(height: Theme.chipHeight)
+            .background(current ? Theme.infoTint : Theme.hoverFill, in: RoundedRectangle(cornerRadius: Theme.chipRadius))
+    }
+}
+
+/// An outlined chip for facts such as "Grouped by name + content" or "High confidence".
+struct OutlineChip: View {
+    var text: String
+    var dot: Color? = nil
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let dot { Circle().fill(dot).frame(width: 6, height: 6) }
+            Text(text).font(Theme.caption.weight(.medium))
+        }
+        .padding(.horizontal, 8)
+        .frame(height: Theme.chipHeight + 4)
+        .overlay(RoundedRectangle(cornerRadius: Theme.chipRadius).strokeBorder(Theme.line2))
+    }
+}
+
+/// The fanned stack of versions at the top of a document's timeline (screen 08).
+struct FamilyFan: View {
+    var count: Int
+    var height: CGFloat = 150
+
+    var body: some View {
+        let sheets = max(2, min(count, 5))
+        ZStack {
+            ForEach(0..<sheets, id: \.self) { index in
+                let isFront = index == sheets - 1
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isFront ? Theme.docFill : Theme.grey.opacity(0.25 + 0.15 * Double(index)))
+                    .overlay(alignment: .topLeading) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(0..<4, id: \.self) { line in
+                                Capsule().fill(Theme.grey.opacity(isFront ? 0.5 : 0.3)).frame(width: line == 0 ? 40 : 70, height: 3)
+                            }
+                        }
+                        .padding(14)
+                    }
+                    .overlay { if isFront { RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.frostedBlue, lineWidth: 1.5) } }
+                    .frame(width: height * 0.9, height: height * 0.62)
+                    .rotationEffect(.degrees(-28))
+                    .offset(x: (CGFloat(index) - CGFloat(sheets - 1) / 2) * height * 0.13,
+                            y: -(CGFloat(index) - CGFloat(sheets - 1) / 2) * height * 0.11)
+            }
+        }
+        .frame(width: height * 1.6, height: height)
+        .accessibilityHidden(true)
+    }
+}

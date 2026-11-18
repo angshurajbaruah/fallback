@@ -5,6 +5,8 @@ import SwiftUI
 struct LedgerView: View {
     @Environment(AppModel.self) private var model
     @State private var destinations: [DestinationSummary] = []
+    @State private var families: [FamilySummary] = []
+    @State private var warningCount = 0
     @State private var total = 0
 
     var body: some View {
@@ -16,7 +18,10 @@ struct LedgerView: View {
             Group {
                 switch model.ledgerRoute {
                 case .allSends: AllSendsView()
+                case .warnings: WarningsView()
                 case .byDestination: ByDestinationView()
+                case .byDocument(let family?): DocumentDetailView(familyID: family)
+                case .byDocument(nil): ByDocumentView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -27,11 +32,20 @@ struct LedgerView: View {
         .ignoresSafeArea()
         .task(id: model.version) {
             destinations = (try? model.store.destinations()) ?? []
+            families = (try? model.store.families()) ?? []
+            warningCount = ((try? model.store.warnings()) ?? []).filter { $0.outcome == nil }.count
             total = (try? model.store.sendCount()) ?? 0
         }
     }
 
     private var isAllSends: Bool { if case .allSends = model.ledgerRoute { true } else { false } }
+    private var isWarnings: Bool { model.ledgerRoute == .warnings }
+    private var isByDestination: Bool { if case .byDestination = model.ledgerRoute { true } else { false } }
+    private var isByDocument: Bool { if case .byDocument = model.ledgerRoute { true } else { false } }
+
+    private var selectedFamily: Int64? {
+        if case .byDocument(let id) = model.ledgerRoute { id } else { nil }
+    }
 
     private var selectedDestination: Int64? {
         if case .byDestination(let id) = model.ledgerRoute { id } else { nil }
@@ -44,9 +58,14 @@ struct LedgerView: View {
             SidebarItem(symbol: "list.bullet", title: "All sends", count: total, selected: isAllSends) {
                 model.ledgerRoute = .allSends(selected: nil)
             }
-            // Warnings (M4) and By document (M3) arrive in their milestones.
-            SidebarItem(symbol: "person", title: "By destination", count: nil, selected: !isAllSends) {
+            SidebarItem(symbol: "exclamationmark.circle", title: "Warnings", badge: warningCount, selected: isWarnings) {
+                model.ledgerRoute = .warnings
+            }
+            SidebarItem(symbol: "person", title: "By destination", count: nil, selected: isByDestination) {
                 model.ledgerRoute = .byDestination(selected: destinations.first?.id)
+            }
+            SidebarItem(symbol: "square.on.square", title: "By document", count: nil, selected: isByDocument && selectedFamily == nil) {
+                model.ledgerRoute = .byDocument(family: nil)
             }
             if !destinations.isEmpty {
                 SidebarHeading(text: "Destinations").padding(.top, 18)
@@ -57,11 +76,21 @@ struct LedgerView: View {
                     }
                 }
             }
+            let documents = families.filter { $0.memberCount > 1 }
+            if !documents.isEmpty {
+                SidebarHeading(text: "Documents").padding(.top, 18)
+                ForEach(documents.prefix(6)) { family in
+                    SidebarItem(symbol: "square.on.square", title: family.name, count: family.memberCount,
+                                selected: selectedFamily == family.id) {
+                        model.ledgerRoute = .byDocument(family: family.id)
+                    }
+                }
+            }
             Spacer()
             Rectangle().fill(Theme.line).frame(height: 1)
             HStack(spacing: 8) {
                 Circle().fill(model.isPaused ? Theme.grey : Theme.frostedBlue).frame(width: 7, height: 7)
-                Text(model.isPaused ? "Paused" : "Watching").font(Theme.caption).foregroundStyle(Theme.textMuted)
+                Text(model.isPaused ? "Paused" : model.foldersPhrase).font(Theme.caption).foregroundStyle(Theme.textMuted).lineLimit(1)
                 Spacer()
                 if model.isPaused {
                     Button { model.resume() } label: { Image(systemName: "play.fill") }
@@ -90,6 +119,7 @@ private struct SidebarItem: View {
     var avatar: String? = nil
     var title: String
     var count: Int?
+    var badge: Int = 0
     var selected: Bool
     var action: () -> Void
 
@@ -104,6 +134,11 @@ private struct SidebarItem: View {
                 Text(title).font(Theme.body).lineLimit(1)
                 Spacer()
                 if let count { Text("\(count)").font(Theme.caption).foregroundStyle(Theme.textMuted) }
+                if badge > 0 {
+                    Text("\(badge)").font(Theme.captionSmall.weight(.semibold)).foregroundStyle(Theme.warningText)
+                        .frame(minWidth: 18, minHeight: 18)
+                        .background(Theme.warningTint, in: Circle())
+                }
             }
             .padding(.horizontal, 10)
             .frame(height: 30)

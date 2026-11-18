@@ -20,9 +20,14 @@ struct AllSendsView: View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
                 toolbar
-                columnHeader
-                table
+                if total == 0 {
+                    LedgerEmptyView()
+                } else {
+                    columnHeader
+                    table
+                }
             }
+            if total > 0 {
             Rectangle().fill(Theme.line).frame(width: 1)
             Group {
                 if let send = sends.first(where: { $0.id == selection }) {
@@ -35,6 +40,7 @@ struct AllSendsView: View {
             }
             .frame(width: Theme.inspectorWidth)
             .background(Theme.surface2)
+            }
         }
         .task(id: "\(model.version)|\(period)|\(query)|\(newestFirst)") { reload() }
         .onAppear { applyRoute() }
@@ -73,6 +79,7 @@ struct AllSendsView: View {
     private var columnHeader: some View {
         HStack(spacing: 0) {
             Text("File").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Ver.").frame(width: 50, alignment: .leading)
             Text("Destination").frame(width: 240, alignment: .leading)
             Text("App").frame(width: 110, alignment: .leading)
             Button { newestFirst.toggle() } label: {
@@ -172,9 +179,13 @@ private struct SendTableRow: View {
             HStack(spacing: 12) {
                 DocGlyph(ext: (send.fileName as NSString).pathExtension, height: 30)
                 Text(send.fileName).font(Theme.rowTitle).lineLimit(1).truncationMode(.middle)
-                // Version chip and Caught/Saved badges arrive in M3 and M4.
+                // Caught/Saved badges arrive with warnings (M4).
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            Group {
+                if let label = send.versionLabel { VersionChip(label: label) }
+            }
+            .frame(width: 50, alignment: .leading)
             HStack(spacing: 10) {
                 Avatar(label: send.destinationLabel)
                 VStack(alignment: .leading, spacing: 1) {
@@ -220,6 +231,8 @@ struct SendInspector: View {
     @State private var previewURL: URL?
     @State private var renaming = false
     @State private var confirmingDelete = false
+    @State private var family: FamilySummary?
+    @State private var alsoHas: String?
 
     private var fileURL: URL? {
         guard let path = send.path, FileManager.default.fileExists(atPath: path) else { return nil }
@@ -252,11 +265,19 @@ struct SendInspector: View {
                      + Text(" from \(shortAppName(send.appName)) · \(SendTime.long(send.sentAt))"))
                         .font(Theme.caption).foregroundStyle(Theme.textMuted).padding(.top, 4)
                     HStack(spacing: 6) {
-                        ConfidenceDot(confidence: send.confidence)
-                        Text(send.confidence.title).font(Theme.caption.weight(.medium))
+                        if let label = send.versionLabel {
+                            Text(label + (send.versionNumber == family?.newestVersion ? " · newest" : ""))
+                                .font(Theme.caption.weight(.semibold)).foregroundStyle(Theme.primary)
+                                .padding(.horizontal, 8).frame(height: Theme.chipHeight + 4)
+                                .background(Theme.infoTint, in: RoundedRectangle(cornerRadius: Theme.chipRadius))
+                        }
+                        HStack(spacing: 6) {
+                            ConfidenceDot(confidence: send.confidence)
+                            Text(send.confidence.title).font(Theme.caption.weight(.medium))
+                        }
+                        .padding(.horizontal, 8).frame(height: Theme.chipHeight + 4)
+                        .overlay(RoundedRectangle(cornerRadius: Theme.chipRadius).strokeBorder(Theme.line2))
                     }
-                    .padding(.horizontal, 8).frame(height: Theme.chipHeight + 4)
-                    .overlay(RoundedRectangle(cornerRadius: Theme.chipRadius).strokeBorder(Theme.line2))
                     .padding(.top, 10)
 
                     Rectangle().fill(Theme.line).frame(height: 1).padding(.vertical, 18)
@@ -268,6 +289,10 @@ struct SendInspector: View {
                         fact("Location", locationText)
                         if let size = send.sizeBytes { fact("Size", size.formatted(.byteCount(style: .file))) }
                         if let sha = send.sha256 { fact("Fingerprint", Self.shortFingerprint(sha), mono: true) }
+                    }
+                    if let family, family.versionCount > 1 {
+                        Rectangle().fill(Theme.line).frame(height: 1).padding(.vertical, 18)
+                        familyStrip(family)
                     }
                 }
                 .padding(.horizontal, 24)
@@ -288,6 +313,42 @@ struct SendInspector: View {
         .quickLookPreview($previewURL)
         .sheet(isPresented: $renaming) { RenameSheet(target: .send(send)) }
         .deleteConfirmation(isPresented: $confirmingDelete) { model.deleteSend(send.id) }
+        .task(id: "\(model.version)|\(send.id)") { loadFamily() }
+    }
+
+    /// "Resume family · 5 versions", a dot per version, and what else this destination has.
+    private func familyStrip(_ family: FamilySummary) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Button(family.name + " family") { model.ledgerRoute = .byDocument(family: family.id) }
+                    .buttonStyle(.plain).font(Theme.bodyMedium)
+                Spacer()
+                Text("\(family.versionCount) versions").font(Theme.caption).foregroundStyle(Theme.textMuted)
+            }
+            let count = min(family.versionCount, 8)
+            HStack(spacing: 0) {
+                ForEach(1...count, id: \.self) { version in
+                    VStack(spacing: 6) {
+                        Circle().fill(version == send.versionNumber ? Theme.frostedBlue : Theme.grey)
+                            .frame(width: version == send.versionNumber ? 12 : 7, height: version == send.versionNumber ? 12 : 7)
+                            .frame(height: 12)
+                        Text("v\(version)").font(Theme.captionSmall)
+                            .foregroundStyle(version == send.versionNumber ? Theme.primary : Theme.textMuted)
+                    }
+                    if version < count { Rectangle().fill(Theme.line2).frame(height: 1).offset(y: -9) }
+                }
+            }
+            if let alsoHas { Text(alsoHas).font(Theme.caption).foregroundStyle(Theme.textMuted) }
+        }
+    }
+
+    private func loadFamily() {
+        guard let familyID = send.familyID else { family = nil; alsoHas = nil; return }
+        family = (try? model.store.families())?.first { $0.id == familyID }
+        // "Razorpay also has v3, sent 2 Nov."
+        let earlier = ((try? model.store.sends(destinationID: send.destinationID)) ?? [])
+            .filter { $0.familyID == familyID && $0.id != send.id && $0.versionNumber != send.versionNumber && $0.versionNumber != nil }
+        alsoHas = earlier.first.map { "\(send.destinationLabel) also has \($0.versionLabel ?? ""), sent \(SendTime.short($0.sentAt))." }
     }
 
     /// FR-12: say so when the file has moved or been deleted. (Finding it again by fingerprint needs watched folders, M3.)

@@ -6,7 +6,10 @@ import os
 /// Which Ledger view to show, and what is selected in it.
 enum LedgerRoute: Hashable {
     case allSends(selected: Int64?)
+    case warnings
     case byDestination(selected: Int64?)
+    /// nil shows every family; an id shows that family's timeline (S3).
+    case byDocument(family: Int64?)
 }
 
 /// App-wide state: the ledger database, pause (FR-30) and the Accessibility permission (FR-31).
@@ -21,8 +24,13 @@ final class AppModel {
     private(set) var pausedUntil: Date?
     private(set) var isTrusted = AXIsProcessTrusted()
     var ledgerRoute: LedgerRoute = .allSends(selected: nil)
+    /// Folders being watched (FR-15) and the medium-confidence groups to suggest (PRD 8.3).
+    private(set) var folders: [String] = []
+    private(set) var suggestions: [[Int64]] = []
+    private(set) var indexing: (done: Int, total: Int)?
 
     @ObservationIgnored private var watcher: PanelWatcher?
+    @ObservationIgnored private var indexer: FileIndexer?
     @ObservationIgnored private var timer: Timer?
     private let logger = Logger(subsystem: "com.angshurajbaruah.fallback", category: "ledger")
 
@@ -50,6 +58,10 @@ final class AppModel {
     #if DEBUG
     /// Snapshots only: show the permission-problem state without changing real permissions.
     func debugSetTrusted(_ trusted: Bool) { isTrusted = trusted }
+    func debugSet(suggestions: [[Int64]], folders: [String]) {
+        self.suggestions = suggestions
+        self.folders = folders
+    }
     #endif
 
     func start() {
@@ -57,6 +69,7 @@ final class AppModel {
             self?.record(picks, context: context, method: method)
         }
         watcher?.start()
+        startIndexer()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkState() }
         }
@@ -67,6 +80,91 @@ final class AppModel {
         if trusted != isTrusted { isTrusted = trusted }
         if let until = pausedUntil, until <= Date() { resume() }
     }
+
+    // MARK: Indexing (FR-15 to FR-22)
+
+    private func startIndexer() {
+        let rules = IndexRules(
+            extraTypes: (try? store.setting("index_extra_types"))?.split(separator: ",").map(String.init) ?? [],
+            extraExcludes: (try? store.setting("index_extra_excludes"))?.split(separator: ",").map(String.init) ?? [])
+        indexer = FileIndexer(store: store, analyzer: FileAnalyzer(readPDF: PDFContents.read), rules: rules) { [weak self] event in
+            Task { @MainActor in self?.indexerEvent(event) }
+        }
+        var saved = (try? store.watchedFolders()) ?? []
+        if saved.isEmpty {
+            // shortcut: M3 watches ~/FallbackTest only (owner's choice); onboarding (M5) asks for real folders.
+            let test = NSString(string: "~/FallbackTest").expandingTildeInPath
+            if FileManager.default.fileExists(atPath: test) {
+                try? store.addWatchedFolder(test)
+                saved = [test]
+            }
+        }
+        folders = saved
+        indexer?.watch(saved)
+    }
+
+    private func indexerEvent(_ event: FileIndexer.Event) {
+        switch event {
+        case .scanning(let done, let total): indexing = done < total ? (done, total) : nil
+        case .updated:
+            suggestions = indexer?.suggestions ?? []
+            if let (file, name) = pendingFamilyName, let family = (try? store.files(ids: [file]))?.first?.familyID {
+                try? store.renameFamily(family, to: name)
+                pendingFamilyName = nil
+            }
+            changed()
+        }
+    }
+
+    /// "Choose folders" on the empty Ledger: adds folders and starts watching them.
+    func addFolders(_ urls: [URL]) {
+        for url in urls { try? store.addWatchedFolder(url.path) }
+        folders = (try? store.watchedFolders()) ?? folders
+        indexer?.watch(folders)
+    }
+
+    /// "Watching 3 folders" (BRAND/COPY), or the folder's name when there's one.
+    var foldersPhrase: String {
+        folders.count == 1 ? "Watching \((folders[0] as NSString).lastPathComponent)" : "Watching \(folders.count) folders"
+    }
+
+    /// "Documents, Desktop and Downloads" for the empty Ledger.
+    var folderNames: String {
+        let names = folders.map { ($0 as NSString).lastPathComponent }
+        guard names.count > 1 else { return names.first ?? "no folders" }
+        return names.dropLast().joined(separator: ", ") + " and " + names.last!
+    }
+
+    // MARK: Families (FR-18, FR-20)
+
+    func group(_ fileIDs: [Int64], name: String) {
+        guard let first = fileIDs.first else { return }
+        try? store.addDecisions(fileIDs.dropFirst().map { .same(first, $0) })
+        pendingFamilyName = (first, name)
+        indexer?.regroup()
+    }
+
+    /// Splits a file off its family: it becomes its own document, and warnings follow right away.
+    func splitOff(_ fileID: Int64, from members: [Int64]) {
+        try? store.addDecisions(members.filter { $0 != fileID }.map { .separate(fileID, $0) })
+        indexer?.regroup()
+    }
+
+    /// "Not now" on a suggestion.
+    func dismissSuggestion(_ fileIDs: [Int64]) {
+        var decisions: [UserDecision] = []
+        for (index, a) in fileIDs.enumerated() { for b in fileIDs[(index + 1)...] { decisions.append(.dismissed(a, b)) } }
+        try? store.addDecisions(decisions)
+        suggestions.removeAll { $0 == fileIDs }
+        indexer?.regroup()
+    }
+
+    func renameFamily(_ id: Int64, to name: String) {
+        try? store.renameFamily(id, to: name)
+        changed()
+    }
+
+    @ObservationIgnored private var pendingFamilyName: (file: Int64, name: String)?
 
     // MARK: Recording (FR-9)
 
@@ -79,20 +177,27 @@ final class AppModel {
                                            appBundleID: context.bundleID, appName: context.appName)
         let store = store
         let sentAt = Date()
+        let indexer = indexer
         Task {
             for pick in picks {
                 let send = NewSend(path: pick.path, fileName: pick.name, appBundleID: context.bundleID,
                                    appName: context.appName, url: context.url, pageTitle: context.pageTitle,
                                    method: method, sentAt: sentAt)
-                // Fingerprinting reads the whole file, so it runs off the main thread.
-                let facts = await Task.detached { pick.path.map(FileFacts.read(path:)) }.value
+                // Fingerprinted and analysed at the moment of sending, wherever the file lives (FR-19).
+                // Reading the file runs off the main thread.
+                let file = await Task.detached { () -> IndexedFile? in
+                    guard let path = pick.path else { return nil }
+                    return indexer?.analyzeNow(path: path) ?? IndexedFile(path: path, name: pick.name, facts: FileFacts.read(path: path))
+                }.value
+                let watched = pick.path.map { indexer?.isInWatchedFolder($0) ?? false } ?? false
                 do {
-                    try store.record(send, destination: destination, facts: facts)
+                    try store.record(send, destination: destination, file: file, inWatchedFolder: watched)
                 } catch {
                     logger.error("Couldn't record a send: \(error.localizedDescription, privacy: .public)")
                 }
             }
             log.add("RECORDED", "\(picks.count) file(s) → \(destination.label)")
+            indexer?.regroup() // new files join their families (and the regroup bumps `version`)
             changed()
         }
     }

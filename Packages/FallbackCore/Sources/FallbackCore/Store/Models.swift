@@ -48,6 +48,14 @@ public struct SendRow: Sendable, Identifiable, Hashable, Decodable, FetchableRec
     public var pageTitle: String?
     public var confidence: Confidence
     public var sentAt: Date
+    public var fileID: Int64?
+    /// From document families (M3): v5, whether it's a tailored variant, and which document.
+    public var versionNumber: Int?
+    public var isVariant: Bool?
+    public var familyID: Int64?
+    public var familyName: String?
+
+    public var versionLabel: String? { versionNumber.map { "v\($0)" } }
 
     /// The quiet second line under a destination: the site for web sends, the app otherwise.
     public var placeDetail: String {
