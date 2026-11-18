@@ -1,0 +1,36 @@
+name: Fallback
+options:
+  bundleIdPrefix: com.angshurajbaruah
+  deploymentTarget:
+    macOS: "14.0"
+packages:
+  FallbackCore:
+    path: Packages/FallbackCore
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+targets:
+  Fallback:
+    type: application
+    platform: macOS
+    sources: [App]
+    dependencies:
+      - package: FallbackCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.angshurajbaruah.fallback
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ENABLE_HARDENED_RUNTIME: YES
+        OTHER_CODE_SIGN_FLAGS: "--options=runtime" # Xcode skips Hardened Runtime for ad-hoc signing without this
+        ENABLE_DEBUG_DYLIB: NO # its ad-hoc signature fails Hardened Runtime library checks
+        ENABLE_APP_SANDBOX: NO
+        CODE_SIGN_ENTITLEMENTS: App/Fallback.entitlements
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Fallback
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: "Fallback reads the address and title of your browser's current tab when you upload a file, so it can record where the file went. Nothing leaves your Mac."
