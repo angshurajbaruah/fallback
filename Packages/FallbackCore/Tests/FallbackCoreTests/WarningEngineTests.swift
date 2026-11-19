@@ -280,12 +280,50 @@ struct WarningEngineTests {
         #expect(result.fired.map(\.rule) == [.w5] && result.card == nil)
     }
 
-    @Test func mutedDocument_noWarnings() {
-        #expect(WarningEngine.evaluate(input("resume_v3.pdf", familyMuted: true)).fired.isEmpty)
+    @Test func mutedDocument_noCard_reasonRecorded() {
+        let result = WarningEngine.evaluate(input("resume_v3.pdf", familyMuted: true))
+        #expect(result.card == nil)
+        #expect(result.detail(for: result.fired[0]) == "Muted for this document")
+        #expect(result.moreChecks == 0)
     }
 
-    @Test func mutedDestination_noWarnings() {
-        #expect(WarningEngine.evaluate(input("resume_v3.pdf", destinationMuted: true)).fired.isEmpty)
+    @Test func mutedDestination_noCard_reasonRecorded() {
+        let result = WarningEngine.evaluate(input("resume_v3.pdf", destinationMuted: true))
+        #expect(result.card == nil)
+        #expect(result.detail(for: result.fired[0]) == "Muted for this destination")
+    }
+
+    // MARK: Why no card ("What happened" in Ledger › Warnings)
+
+    @Test func reason_sensitivityNamesTheLevel() {
+        let result = WarningEngine.evaluate(input("resume_v5.pdf", past: [past("resume_v5.pdf", file: 3)]))
+        #expect(result.detail(for: result.fired[0]) == "Not shown on Balanced")
+    }
+
+    @Test func reason_coolDownSaysHowLongAgo_evenInStrict() {
+        let recent = [ShownCard(rule: .w1, familyID: 10, at: now - 6 * 60 - 20)]
+        let result = WarningEngine.evaluate(input("resume_v3.pdf", sensitivity: .strict, recent: recent))
+        #expect(result.card == nil)
+        #expect(result.detail(for: result.fired[0]) == "Already warned about this 6 minutes ago")
+    }
+
+    @Test func reason_coolDownUnderAMinute() {
+        let recent = [ShownCard(rule: .w1, familyID: 10, at: now - 20)]
+        let result = WarningEngine.evaluate(input("resume_v3.pdf", recent: recent))
+        #expect(result.detail(for: result.fired[0]) == "Already warned about this less than a minute ago")
+    }
+
+    @Test func reason_softerCheckOutsideItsSevenDays() {
+        let members = [FamilyFile(id: 2, name: "plan b.pdf", editedAt: date(20), relationToPicked: .unclear)]
+        let result = WarningEngine.evaluate(input("plan a.pdf", edited: date(30), version: 1, members: members, sensitivity: .strict))
+        #expect(result.detail(for: result.fired[0]) == "Not shown: the other version hasn't changed in the last 7 days")
+    }
+
+    @Test func reason_othersUnderMoreWhenACardShows() {
+        let result = WarningEngine.evaluate(input("Proposal_Acme.pdf", edited: date(4), family: 20, version: 1, exportOf: 8,
+                                                  members: proposalFamily(docxEdited: 0), known: ["Acme": 1]))
+        let others = result.fired.filter { $0 != result.card }
+        #expect(!others.isEmpty && others.allSatisfy { result.detail(for: $0) == "Under “more”" })
     }
 
     @Test func coolDown_sameRuleSameDocumentWithin10Minutes() {
@@ -334,6 +372,23 @@ struct WarningStoreTests {
         let cardID = try store.record(result, forSend: sendID, familyID: input.familyID, fileID: input.fileID, sensitivity: .balanced)
         try store.setOutcome(warning: #require(cardID), "fixed", detail: "Picked resume_v5.pdf 20 s later")
         #expect(try store.warnings(outcome: "fixed").first?.rule == "W1")
+    }
+
+    /// The bug this replaced: a cool-down in Strict was stored as "Ledger only (Strict)".
+    @Test func recordStoresTheRealReason() throws {
+        let store = try Store.inMemory()
+        let sendID = try store.record(NewSend(path: nil, fileName: "resume_v3.pdf", appBundleID: "com.google.Chrome", appName: "Chrome",
+                                              url: nil, pageTitle: "Apply", method: .axPanel),
+                                      destination: Destination(key: "lever:northwind", label: "Northwind", source: .rule), facts: nil)
+        let w1 = Warning(rule: .w1), w2 = Warning(rule: .w2), w3 = Warning(rule: .w3), softer = Warning(rule: .softer)
+        let result = WarningResult(fired: [w1, softer, w3, w2], card: nil,
+                                   hidden: [.w1: .coolDown(minutesAgo: 6), .softer: .softerWindow, .w3: .sensitivity(.quiet),
+                                            .w2: .mutedDestination])
+        #expect(try store.record(result, forSend: sendID, familyID: nil, fileID: nil, sensitivity: .strict) == nil)
+        let details = Dictionary(uniqueKeysWithValues: try store.warnings().map { ($0.rule, $0.detail ?? "") })
+        #expect(details == ["W1": "Already warned about this 6 minutes ago",
+                            "S": "Not shown: the other version hasn't changed in the last 7 days",
+                            "W3": "Not shown on Quiet", "W2": "Muted for this destination"])
     }
 
     @Test func mailIsNotAnIdentifiedRecipient() throws {

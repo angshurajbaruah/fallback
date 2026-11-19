@@ -152,12 +152,55 @@ public struct Warning: Sendable, Equatable {
     }
 }
 
+/// Why a warning that fired didn't become a card, worded for the Ledger's "What happened" column.
+public enum HiddenReason: Sendable, Equatable {
+    case sensitivity(Sensitivity)
+    case coolDown(minutesAgo: Int)
+    case softerWindow
+    case mutedDocument
+    case mutedDestination
+
+    public var text: String {
+        switch self {
+        case .sensitivity(let level): "Not shown on \(level.rawValue.capitalized)"
+        case .coolDown(let minutes):
+            minutes < 1 ? "Already warned about this less than a minute ago"
+                : "Already warned about this \(minutes) minute\(minutes == 1 ? "" : "s") ago"
+        case .softerWindow: "Not shown: the other version hasn't changed in the last 7 days"
+        case .mutedDocument: "Muted for this document"
+        case .mutedDestination: "Muted for this destination"
+        }
+    }
+
+    var isMute: Bool { self == .mutedDocument || self == .mutedDestination }
+}
+
 /// What the WarningEngine decided for one pick.
 public struct WarningResult: Sendable, Equatable {
     /// Every rule that fired, most important first (PRD 8.2 precedence).
     public var fired: [Warning]
     /// The one to show as a card, if any. The rest appear under "More" and in the Ledger.
     public var card: Warning?
+    /// Why each rule that couldn't be a card wasn't one. Rules missing here were eligible
+    /// but another one came first.
+    public var hidden: [WarningRule: HiddenReason] = [:]
+
+    public init(fired: [Warning], card: Warning?, hidden: [WarningRule: HiddenReason] = [:]) {
+        self.fired = fired; self.card = card; self.hidden = hidden
+    }
+
+    /// The "{n} more checks" count on the card (FR-24). Muted rules never count.
+    public var moreChecks: Int { fired.filter { $0 != card && hidden[$0.rule]?.isMute != true }.count }
+
+    /// The Ledger's "What happened" text for a rule that fired but wasn't the card.
+    public func detail(for warning: Warning) -> String? {
+        guard warning != card else { return nil }
+        if let reason = hidden[warning.rule], reason.isMute { return reason.text }
+        if card != nil { return "Under “more”" }
+        if warning.rule == .unknownDestination, hidden[warning.rule] == nil { return "Not asked: a warning came first" }
+        // No reason and no card: another file picked at the same time got this pick's one card (FR-24).
+        return hidden[warning.rule]?.text ?? "Another file in this pick was warned about"
+    }
 }
 
 /// PRD 8.1 to 8.4: decides which warnings fire for a pick and which one becomes a card.
@@ -174,10 +217,6 @@ public enum WarningEngine {
     public static func evaluate(_ input: WarningInput) -> WarningResult {
         // FR-37: asking for a label is never a warning, so muting doesn't hide it.
         let ask = input.askForLabel ? [Warning(rule: .unknownDestination)] : []
-        // Muting (PRD 8.2): a muted document or destination gets no warnings at all.
-        guard !input.familyMuted, !input.destinationMuted else {
-            return WarningResult(fired: ask, card: ask.first.flatMap { input.sensitivity.showsCard($0.rule) ? $0 : nil })
-        }
         var fired: [Warning] = []
         if let w4 = nameMismatch(input) { fired.append(w4) }
         if let w1 = olderVersion(input) { fired.append(w1) }
@@ -187,6 +226,15 @@ public enum WarningEngine {
         fired.removeAll { input.disabledRules.contains($0.rule) || ($0.rule == .softer && input.disabledRules.contains(.w1)) }
         fired.sort { $0.rule.precedence < $1.rule.precedence }
 
+        // Muting (PRD 8.2): a muted document or destination never gets a warning card. The warnings
+        // are still recorded so the Ledger can say why. FR-37's question isn't a warning, so it still shows.
+        if let muted: HiddenReason = input.familyMuted ? .mutedDocument : input.destinationMuted ? .mutedDestination : nil {
+            var hidden = Dictionary(uniqueKeysWithValues: fired.map { ($0.rule, muted) })
+            let card = ask.first.flatMap { input.sensitivity.showsCard($0.rule) ? $0 : nil }
+            if card == nil, !ask.isEmpty { hidden[.unknownDestination] = .sensitivity(input.sensitivity) }
+            return WarningResult(fired: fired + ask, card: card, hidden: hidden)
+        }
+
         // FR-37: the label question shows only when no warning fired for this pick; otherwise it stays
         // in the Ledger and the warning gets the card.
         if !ask.isEmpty {
@@ -195,19 +243,28 @@ public enum WarningEngine {
             if card != nil { return WarningResult(fired: fired, card: card) }
         }
 
-        let card = fired.first { warning in
-            guard warning.rule != .unknownDestination else { return false }
-            guard input.sensitivity.showsCard(warning.rule) else { return false }
-            // The softer check is a card only if the other file changed in the last 7 days (PRD 8.3).
-            if warning.rule == .softer {
-                guard let edited = warning.otherFile?.editedAt, input.now.timeIntervalSince(edited) <= softerCardWindow else { return false }
-            }
-            // Cool-down: the same rule for the same document at most once every 10 minutes.
-            return !input.recentCards.contains {
-                $0.rule == warning.rule && $0.familyID == input.familyID && input.now.timeIntervalSince($0.at) < coolDown
-            }
+        var hidden: [WarningRule: HiddenReason] = [:]
+        for warning in fired {
+            if let reason = hiddenReason(warning, input) { hidden[warning.rule] = reason }
         }
-        return WarningResult(fired: fired, card: card)
+        let card = fired.first { $0.rule != .unknownDestination && hidden[$0.rule] == nil }
+        return WarningResult(fired: fired, card: card, hidden: hidden)
+    }
+
+    /// Why this warning can't be a card, or nil if it can.
+    static func hiddenReason(_ warning: Warning, _ input: WarningInput) -> HiddenReason? {
+        guard input.sensitivity.showsCard(warning.rule) else { return .sensitivity(input.sensitivity) }
+        // The softer check is a card only if the other file changed in the last 7 days (PRD 8.3).
+        if warning.rule == .softer {
+            guard let edited = warning.otherFile?.editedAt, input.now.timeIntervalSince(edited) <= softerCardWindow else { return .softerWindow }
+        }
+        // Cool-down: the same rule for the same document at most once every 10 minutes.
+        if let last = input.recentCards.filter({
+            $0.rule == warning.rule && $0.familyID == input.familyID && input.now.timeIntervalSince($0.at) < coolDown
+        }).map(\.at).max() {
+            return .coolDown(minutesAgo: Int(input.now.timeIntervalSince(last) / 60))
+        }
+        return nil
     }
 
     // MARK: Saves (FR-27)

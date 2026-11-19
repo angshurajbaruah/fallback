@@ -119,7 +119,7 @@ enum Scenarios {
             if let card = result.card, let cardID {
                 lastCard = (cardID, input.familyID, input.fileID, Date())
                 if card.rule == .unknownDestination { try? store.markLabelAsked(destination: input.destinationID) }
-                let content = WarningCardContent(card, input: input, moreChecks: result.fired.count - 1, appName: "Chrome")
+                let content = WarningCardContent(card, input: input, moreChecks: result.moreChecks, appName: "Chrome")
                 Snapshots.render(WarningCardView(content: content, onPrimary: {}, onSecondary: {}, onMute: {}, onMore: {},
                                                  onClose: {}, onTimeout: {}),
                                  width: 372, to: folder.appending(path: "\(pngName).png"))

@@ -294,7 +294,7 @@ final class AppModel {
             }
             guard let card = result.card, let cardID else { continue }
             cardShown = true
-            showCard(card, input: input, warningID: cardID, more: result.fired.count - 1, appName: appName)
+            showCard(card, input: input, warningID: cardID, more: result.moreChecks, appName: appName)
         }
     }
 

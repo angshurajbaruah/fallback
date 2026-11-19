@@ -92,7 +92,7 @@ extension Store {
             var cardID: Int64?
             for warning in result.fired {
                 let isCard = warning == result.card
-                let detail: String? = isCard ? nil : (result.card == nil ? "Ledger only (\(sensitivity.rawValue.capitalized))" : "Under “more”")
+                let detail = result.detail(for: warning)
                 try db.execute(sql: """
                     INSERT INTO warnings (send_id, rule, shown_as_card, outcome, created_at, family_id, file_id,
                                           other_file_id, other_send_id, token, detail)
