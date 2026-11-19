@@ -254,7 +254,7 @@ Priority: **P0** = must ship in v1.0. **P1** = should ship in v1.0, can slip to 
 | FR-5 | Turn context into a readable destination label (rules in 9.5) | P0 | Workday, Greenhouse, Lever, LinkedIn, Naukri, Gmail resolve to a company or service name. Others fall back to the website's main domain |
 | FR-6 | Mark each send with a confidence: High (file and URL known), Medium (file known, only window title), Low (file guessed) | P0 | Visible as a small dot in the Ledger |
 | FR-7 | Firefox and other browsers without scripting support | P1 | Recorded with window title only, Medium confidence |
-| FR-8 | Recipient name for Gmail, Mail and Outlook compose windows | P2 | Reads the To field. Moves to v1.1 |
+| FR-8 | Recipient name for Gmail, Mail and Outlook compose windows | P2 | Reads the To field. Moves to v1.1. Proposal P-1 (16.4) would also use the recipient's domain as the destination, so W4 works for email |
 
 ### 7.2 Ledger
 
@@ -400,6 +400,8 @@ A family is **the same document across its versions, whatever the files are call
 2. Split the file name into words (also splitting CamelCase like AcmeProposal). Ignore words under 3 letters and common words (resume, cv, final, draft, proposal, invoice, deck, the, for).
 3. If a word matches a known organisation, and that organisation is **not** part of the current destination (its label, domain or page title), W4 fires.
 4. If the destination couldn't be identified (Low confidence), W4 doesn't fire. It never guesses.
+
+Known gap: W4 can't catch a file tailored for a company you haven't sent anything to yet, and it never fires for email, because Gmail, Outlook and Mail aren't identified destinations. Proposals P-1 and P-2 in 16.4 address both. Neither is part of v1 yet.
 
 ## 9. How it works on macOS: architecture and detection
 
@@ -872,6 +874,8 @@ DMG and website live. GitHub README polished, with the demo GIF at the top. Issu
 3. Is 90 days the right window for W2?
 4. Does the menu-bar tick animation feel reassuring or distracting?
 5. Is opt-in, anonymous counting worth adding in v1.1, given the privacy story?
+6. Should P-1 (recipient domain as destination) move into v1.0, given that the mistake Fallback exists for often happens in email? See 16.4.
+7. Is P-2 (an information card for an unfamiliar company name) worth its false alarms? Decide after dogfooding P-1. See 16.4.
 
 ### 16.3 Roadmap
 
@@ -881,6 +885,8 @@ DMG and website live. GitHub README polished, with the demo GIF at the top. Issu
 - Import your Sent email history from Gmail on the Mac, with a Google app password, so your trail starts complete on day one.
 - Touch ID lock for the Ledger.
 - Quick Look preview inside the warning card.
+
+- P-1 below, if it isn't pulled into v1.0.
 
 **v1.2**
 
@@ -892,3 +898,58 @@ DMG and website live. GitHub README polished, with the demo GIF at the top. Issu
 - **Fallback for teams (paid):** a shared, end-to-end-encrypted ledger, so a sales team, agency or CA firm knows what any member sent to each client. This is the first thing worth charging for.
 - **Windows version,** once the Mac app proves the demand.
 - **The bigger platform:** the same engine (watching files, fingerprints, versions) is the base for the agent-safety idea from the research doc. Fallback can grow from "undo the wrong send" into "undo anything that went wrong on your computer".
+
+### 16.4 Proposals (not scheduled)
+
+Written up after a real test on 19 Nov 2026: Anshuraj_Baruah_Cover_Letter_Zamp.pdf was attached to a Gmail draft addressed to careers@palmonas.com. Fallback recorded "Recorded, destination unknown" and nothing else. Two separate gaps caused it:
+
+- The tab address wasn't read (Chrome's Apple Events permission had just been reset). Fixed separately: onboarding's browser step now proves the connection works.
+- Even with the address, the destination would have been "Gmail", which W4 treats as unidentified (8.4 step 4), and "Zamp" wasn't a known organisation (8.4 step 1). So W4 couldn't fire twice over.
+
+#### P-1: the email recipient's domain becomes the destination (extends FR-8)
+
+**What.** When a file is attached in a Gmail, Outlook or Mail compose window, read the To field (FR-8). If every recipient is at the same company domain, that domain becomes the destination, resolved like a website (careers@palmonas.com becomes Palmonas, via the public suffix list), with High confidence. W4 then works for email exactly as it does for careers pages.
+
+**Rules.**
+- Personal mail domains (gmail.com, outlook.com, yahoo.com, icloud.com, proton.me and similar, shipped as a list) stay unidentified: a friend's address says nothing about a company.
+- Several recipients at different companies: unidentified (W4 never guesses).
+- The address is stored like a URL: local only, never sent anywhere, shown in the Ledger, removed by Delete All. Only the To field is read, never the subject or body, so the "not reading your emails" non-goal (section 4) still holds.
+
+**How.** Mail exposes the compose window's To field through Accessibility. Gmail and Outlook on the web expose recipient chips through the browser's accessibility tree, which Chrome turns on for apps with the Accessibility permission. Web layouts change, so this is Medium confidence for webmail, and a failed read falls back to today's "Gmail" destination.
+
+**Recommendation.** Do this before P-2. It fixes the exact case above with no new false alarms, because it reuses W4's existing, precise rule.
+
+#### P-2: "Looks tailored for…" (a softer W4 for unfamiliar names)
+
+**What.** A file whose name says it was tailored for a company you've never sent anything to, going to a destination that is clearly someone else. An information card (Frosted Blue, not Tangerine): "This looks tailored for **Zamp**. You're sending it to **Palmonas**." Card in Strict and Balanced, Ledger only in Quiet. Actions: Show the file · Send anyway · mute link "This isn't a company", which adds the word to an ignore list. Once anything has been sent to Zamp, the normal W4 takes over.
+
+**Fires only when all four hold.**
+1. The destination is identified with High confidence: a careers page, a company website, or (with P-1) a company email domain. Never Gmail as such, chat apps, window titles or Low confidence.
+2. The word is in a tailoring position:
+   - either it's the word that distinguishes a tailored variant from its siblings (Resume_**Razorpay** vs Resume_**Emergent**), which the family engine already works out (8.3, sibling variants);
+   - or it sits in a pattern like Cover_Letter_**X**, **X**_Cover_Letter, Resume_**X**, CV_**X**, Proposal_**X**.
+   A capitalised word anywhere in the name is not enough.
+3. The word isn't one of yours or a common word:
+   - not a "self" word (one that appears in most of your files and sends, such as your own name), learned locally;
+   - not in the Mac's built-in dictionary (offline);
+   - not in 8.4's common-word list;
+   - at least 3 letters.
+4. The destination's label, domain and page title don't contain the word, using the same normalising as W4.
+
+**Where it would be wrong.** Each of these is a real, everyday send:
+
+| Case | Example | Caught by the conditions? |
+| --- | --- | --- |
+| Papers from a previous employer, sent to a new one | Infosys_Experience_Letter.pdf, Zamp_Offer_Letter.pdf for a counter-offer | Partly. "Offer letter" isn't a tailoring pattern, but X_Offer_Letter looks like one. The main remaining false alarm |
+| Portfolio case studies about other companies | CaseStudy_Swiggy.pdf sent to Zomato | Mostly. Not a tailoring pattern or variant word |
+| Tools, courses and certificates | Figma_Portfolio.pdf, AWS_Certificate.pdf | Mostly. Not tailoring positions; brand words get muted once |
+| Universities and places | IITG_Transcript.pdf, Resume_Bangalore.pdf | Resume_Bangalore matches the pattern: false alarm until muted |
+| Brand vs company name | Proposal_Alphabet.pdf on google.com; Myntra vs Flipkart | No. Fires; needs muting or an alias |
+| Acronyms and short names | Resume_TCS.pdf on tcs.com | Yes when the domain contains it; short forms like M&A fall under 3 letters |
+| Recruitment agencies | A resume tailored for the client, uploaded to the agency's site | No. Fires, and the user is doing nothing wrong |
+| Your own name | Anshuraj_Baruah_Cover_Letter.pdf | Yes, once self words are learned. On a fresh install with few files it may fire until learned |
+
+**Risk.** This trades W4's precision for recall, against principle "precision over recall" (section 5). Hence: information tone, "This isn't a company" learning, Quiet excludes it, and a dogfood gate. If more than 1 in 5 of these cards is dismissed as wrong in two weeks of dogfooding, ship it Ledger-only.
+
+**Recommendation.** Build after P-1, behind the dogfood gate above. It's the only way to catch a file tailored for a company you've never applied to, which is the mistake in the test above.
+
