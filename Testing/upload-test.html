@@ -1,11 +1,28 @@
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Fallback upload test</title>
-<style>body{font:16px -apple-system,sans-serif;margin:40px;max-width:560px}input{margin:12px 0;display:block}</style></head>
+<style>
+body{font:16px -apple-system,sans-serif;margin:40px;max-width:600px}
+input{margin:12px 0;display:block}
+nav a{margin-right:14px}
+.current{font-weight:600}
+</style></head>
 <body>
-<h1>Fallback upload test</h1>
-<p>Offline page for the M1 checklist. Picking a file here sends it nowhere: there is no form and no network.</p>
+<p>Offline page for testing Fallback. Picking a file here sends it nowhere: there is no form and no network.</p>
+<nav>Pretend this is a careers page for:
+  <a href="?company=Acme">Acme</a><a href="?company=Globex">Globex</a><a href="?company=Northwind">Northwind</a><a href="?">no company</a>
+</nav>
+<h1 id="heading">Fallback upload test</h1>
 <label>One file <input type="file"></label>
 <label>Several files <input type="file" multiple></label>
+<script>
+  // The tab title becomes the destination Fallback records, e.g. "Acme · Careers" → Acme.
+  const company = new URLSearchParams(location.search).get("company");
+  if (company) {
+    document.title = company + " · Careers";
+    document.getElementById("heading").textContent = company + " · Careers";
+    document.querySelectorAll("nav a").forEach(a => { if (a.textContent === company) a.className = "current"; });
+  }
+</script>
 </body>
 </html>

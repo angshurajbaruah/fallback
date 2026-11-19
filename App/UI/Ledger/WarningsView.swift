@@ -147,7 +147,8 @@ private struct WarningTableRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text(row.shownAsCard ? "Shown as a card" : "Ledger only").font(Theme.body).frame(width: 300, alignment: .leading)
+            Text(row.detail ?? (row.shownAsCard ? "Card shown" : "Ledger only")).font(Theme.body).lineLimit(1)
+                .frame(width: 300, alignment: .leading)
             Text(SendTime.long(row.createdAt)).font(Theme.body).frame(width: 110, alignment: .leading)
             outcome.frame(width: 130, alignment: .leading)
         }
@@ -160,6 +161,7 @@ private struct WarningTableRow: View {
         case "fixed": ("Saved", Theme.infoTint, Theme.primary)
         case "sent_anyway": ("Sent anyway", Theme.hoverFill, Theme.text)
         case "muted": ("Muted", Theme.warningTint, Theme.warningText)
+        case nil where !row.shownAsCard: ("Ledger only", Theme.hoverFill, Theme.textMuted)
         default: ("Dismissed", Theme.hoverFill, Theme.text)
         }
         Text(text).font(Theme.caption.weight(.medium)).foregroundStyle(colour)

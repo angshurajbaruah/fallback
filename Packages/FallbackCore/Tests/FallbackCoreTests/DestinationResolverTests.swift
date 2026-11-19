@@ -83,8 +83,14 @@ struct DestinationResolverTests {
         #expect(found == Destination(key: "app:net.whatsapp.WhatsApp", label: "WhatsApp", source: .fallback))
     }
 
-    @Test func localPageUsesAppName() {
-        let found = resolver.resolve(url: "file:///Users/me/upload-test.html", title: "Fallback upload test",
+    @Test func localPageIsNamedByItsTitle() {
+        let found = resolver.resolve(url: "file:///Users/me/upload-test.html?company=Acme", title: "Acme · Careers",
+                                     appBundleID: "com.google.Chrome", appName: "Google Chrome")
+        #expect(found == Destination(key: "page:acme", label: "Acme", source: .fallback))
+    }
+
+    @Test func localPageWithoutTitleUsesAppName() {
+        let found = resolver.resolve(url: "file:///Users/me/upload-test.html", title: "",
                                      appBundleID: "com.google.Chrome", appName: "Google Chrome")
         #expect(found.key == "app:com.google.Chrome")
     }

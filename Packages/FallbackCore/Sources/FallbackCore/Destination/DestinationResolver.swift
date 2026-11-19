@@ -49,6 +49,11 @@ public struct DestinationResolver: Sendable {
         if let url, let parsed = URL(string: url), let host = parsed.host()?.lowercased(), !host.isEmpty {
             return web(host: host, path: parsed.path(), title: title ?? "") ?? domain(host)
         }
+        // A page saved on this Mac has no domain: name it by its title ("Acme · Careers" → Acme).
+        if let url, url.hasPrefix("file://"), let first = title?.components(separatedBy: " · ").first?
+            .trimmingCharacters(in: .whitespaces), !first.isEmpty {
+            return Destination(key: "page:\(first.lowercased())", label: first, source: .fallback)
+        }
         if let title, let found = app(bundleID: appBundleID, title: title) { return found }
         return Destination(key: "app:\(appBundleID)", label: appName, source: .fallback)
     }

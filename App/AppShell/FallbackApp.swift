@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Theme.registerFonts()
         #if DEBUG
-        if Snapshots.runIfRequested() { exit(0) }
+        if Snapshots.runIfRequested() || Scenarios.runIfRequested() { exit(0) }
         #endif
         // Adds Fallback to the Accessibility list and shows macOS's prompt if access isn't granted yet.
         _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
@@ -47,9 +47,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// Accessibility is off (BRAND.md "Menu-bar icon", FR-31).
 private struct MenuBarLabel: View {
     let model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Image(nsImage: Self.image(paused: model.isPaused, problem: !model.isTrusted))
+        // The dot also marks a warning card that hasn't been handled yet (screen 03).
+        Image(nsImage: Self.image(paused: model.isPaused, problem: !model.isTrusted || model.activeCard != nil))
+            .onAppear { model.openLedgerWindow = { openWindow(id: "ledger") } }
             .accessibilityLabel(model.isTrusted ? FallbackCore.appName : "\(FallbackCore.appName), needs Accessibility")
     }
 

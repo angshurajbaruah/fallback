@@ -215,6 +215,7 @@ final class AppModel {
         let sentAt = Date()
         let indexer = indexer
         Task {
+            var sendIDs: [Int64] = []
             for pick in picks {
                 let send = NewSend(path: pick.path, fileName: pick.name, appBundleID: context.bundleID,
                                    appName: context.appName, url: context.url, pageTitle: context.pageTitle,
@@ -227,15 +228,123 @@ final class AppModel {
                 }.value
                 let watched = pick.path.map { indexer?.isInWatchedFolder($0) ?? false } ?? false
                 do {
-                    try store.record(send, destination: destination, file: file, inWatchedFolder: watched)
+                    sendIDs.append(try store.record(send, destination: destination, file: file, inWatchedFolder: watched))
                 } catch {
                     logger.error("Couldn't record a send: \(error.localizedDescription, privacy: .public)")
                 }
             }
             log.add("RECORDED", "\(picks.count) file(s) → \(destination.label)")
-            indexer?.regroup() // new files join their families (and the regroup bumps `version`)
+            // Warnings need the file's family. An indexed file already has one, so warn straight away
+            // (FR-23: within a second); a new file is grouped first.
+            let needsGrouping = sendIDs.contains { ((try? store.familyAndFile(ofSend: $0))??.family) == nil }
+            if needsGrouping { await indexer?.regroupAndWait() } else { indexer?.regroup() }
+            evaluateWarnings(for: sendIDs, appName: context.appName)
             changed()
         }
+    }
+
+    // MARK: Warnings (FR-23 to FR-27)
+
+    struct ActiveCard {
+        var warningID: Int64
+        var warning: Warning
+        var familyID: Int64?
+        var destinationID: Int64
+    }
+
+    /// The card on screen; the menu-bar icon keeps a Tangerine dot until it's handled (screen 03).
+    private(set) var activeCard: ActiveCard?
+    /// The last card's document and file, for spotting a save within 2 minutes (FR-27).
+    @ObservationIgnored private var lastCard: (warningID: Int64, familyID: Int64?, fileID: Int64?, at: Date)?
+    @ObservationIgnored let presenter = WarningPresenter()
+    /// Opens the Ledger window; set by the menu-bar label, which can reach SwiftUI's openWindow.
+    @ObservationIgnored var openLedgerWindow: (() -> Void)?
+
+    private func evaluateWarnings(for sendIDs: [Int64], appName: String) {
+        var cardShown = false
+        for sendID in sendIDs {
+            detectSave(sendID)
+            guard let input = try? store.warningInput(forSend: sendID) else { continue }
+            var result = WarningEngine.evaluate(input)
+            if cardShown { result.card = nil } // FR-24: at most one card per pick
+            let cardID = try? store.record(result, forSend: sendID, familyID: input.familyID, fileID: input.fileID,
+                                           sensitivity: input.sensitivity)
+            for warning in result.fired {
+                log.add("WARNING", "\(warning.rule.rawValue) on \(input.fileName)\(warning == result.card ? " (card)" : "")")
+            }
+            guard let card = result.card, let cardID else { continue }
+            cardShown = true
+            showCard(card, input: input, warningID: cardID, more: result.fired.count - 1, appName: appName)
+        }
+    }
+
+    /// FR-27: a different file from the same document picked within 2 minutes of a card is a "save".
+    private func detectSave(_ sendID: Int64) {
+        guard let last = lastCard, let pick = try? store.familyAndFile(ofSend: sendID) else { return }
+        let now = Date()
+        guard WarningEngine.isSave(card: (last.familyID, last.fileID, last.at), pick: (pick.family, pick.file, now)) else { return }
+        try? store.setOutcome(warning: last.warningID, "fixed", detail: "Picked \(pick.name) \(Int(now.timeIntervalSince(last.at))) s later")
+        log.add("SAVE", "picked \(pick.name) after the warning")
+        lastCard = nil
+    }
+
+    private func showCard(_ warning: Warning, input: WarningInput, warningID: Int64, more: Int, appName: String) {
+        let content = WarningCardContent(warning, input: input, moreChecks: more, appName: shortAppName(appName))
+        activeCard = ActiveCard(warningID: warningID, warning: warning, familyID: input.familyID, destinationID: input.destinationID)
+        lastCard = (warningID, input.familyID, input.fileID, Date())
+        presenter.show(WarningCardView(
+            content: content,
+            onPrimary: { [weak self] in self?.cardPrimary() },
+            onSecondary: { [weak self] in
+                self?.closeCard("sent_anyway", detail: warning.rule == .softer ? "Said it's the right one" : "Sent anyway")
+            },
+            onMute: { [weak self] in self?.cardMute() },
+            onMore: { [weak self] in self?.openLedger(.warnings); self?.closeCard(nil, detail: nil) },
+            onClose: { [weak self] in self?.closeCard("dismissed", detail: "Closed the card") },
+            onTimeout: { [weak self] in self?.closeCard("dismissed", detail: "Card timed out") }))
+    }
+
+    /// The fix: show the newer file, the previous send, what they have, or the source document.
+    private func cardPrimary() {
+        guard let card = activeCard else { return }
+        switch card.warning.rule {
+        case .w1, .w5, .softer:
+            if let id = card.warning.otherFile?.id, let path = (try? store.files(ids: [id]))?.first?.path {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)]) // already selected, ready to drag in
+            }
+        case .w2:
+            openLedger(.allSends(selected: card.warning.previousSend?.sendID))
+        case .w3:
+            openLedger(.byDestination(selected: card.destinationID))
+        case .w4:
+            let id = card.warning.tokenDestinationID.flatMap { $0 == 0 ? nil : $0 }
+            openLedger(.byDestination(selected: id))
+        }
+        closeCard(nil, detail: nil) // the outcome becomes "Saved" if they pick another version in time
+    }
+
+    private func cardMute() {
+        guard let card = activeCard else { return }
+        if card.warning.rule == .w2 {
+            try? store.muteDestination(card.destinationID)
+            closeCard("muted", detail: "Muted for this destination")
+        } else {
+            if let family = card.familyID { try? store.muteFamily(family) }
+            closeCard("muted", detail: "Muted for this document")
+        }
+    }
+
+    private func closeCard(_ outcome: String?, detail: String?) {
+        if let card = activeCard, let outcome, let detail { try? store.setOutcome(warning: card.warningID, outcome, detail: detail) }
+        presenter.dismiss()
+        activeCard = nil
+        changed()
+    }
+
+    private func openLedger(_ route: LedgerRoute) {
+        show(route)
+        openLedgerWindow?()
+        NSApp.activate()
     }
 
     func changed() { version += 1 }

@@ -79,6 +79,16 @@ public final class FileIndexer: @unchecked Sendable { // all mutable state is to
         queue.async { [self] in regroupNow() }
     }
 
+    /// Regroups and waits for it to finish, so a new file's family is known before warning.
+    public func regroupAndWait() async {
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            queue.async { [self] in
+                regroupNow()
+                done.resume()
+            }
+        }
+    }
+
     // MARK: Scanning
 
     private func scanAll() {

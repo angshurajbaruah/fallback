@@ -1,0 +1,287 @@
+import Foundation
+
+/// The five rules of PRD 8.1, plus the softer "Another version exists" check from 8.3.
+public enum WarningRule: String, Sendable, Codable, CaseIterable {
+    case w1 = "W1", w2 = "W2", w3 = "W3", w4 = "W4", w5 = "W5", softer = "S"
+
+    /// PRD 8.2 precedence: W4, then W1 (or its softer form), then W5, then W3, then W2.
+    var precedence: Int {
+        switch self {
+        case .w4: 0
+        case .w1, .softer: 1
+        case .w5: 2
+        case .w3: 3
+        case .w2: 4
+        }
+    }
+
+    /// Warning (Burnt Tangerine) or info (Frosted Blue).
+    public var isWarning: Bool { [.w1, .w4, .w5].contains(self) }
+}
+
+/// PRD 8.2 sensitivity: which rules may show as a card. The others go to the Ledger only.
+public enum Sensitivity: String, Sendable, CaseIterable {
+    case strict, balanced, quiet
+
+    func showsCard(_ rule: WarningRule) -> Bool {
+        switch self {
+        case .strict: true
+        case .balanced: [.w1, .w4, .w5, .softer].contains(rule)
+        case .quiet: [.w1, .w4].contains(rule)
+        }
+    }
+}
+
+/// A file in the picked file's family, as the rules need it.
+public struct FamilyFile: Sendable, Equatable {
+    public var id: Int64
+    public var name: String
+    public var editedAt: Date?
+    public var versionNumber: Int?
+    public var isVariant: Bool
+    public var exportOfID: Int64?
+    /// How this file relates to the picked one (from the family links): version, variant, export or unclear.
+    public var relationToPicked: Relation?
+
+    public init(id: Int64, name: String, editedAt: Date?, versionNumber: Int? = nil, isVariant: Bool = false,
+                exportOfID: Int64? = nil, relationToPicked: Relation? = nil) {
+        self.id = id; self.name = name; self.editedAt = editedAt; self.versionNumber = versionNumber
+        self.isVariant = isVariant; self.exportOfID = exportOfID; self.relationToPicked = relationToPicked
+    }
+
+    public var ext: String { (name as NSString).pathExtension.lowercased() }
+}
+
+/// An earlier send, for W2 and W3.
+public struct PastSend: Sendable, Equatable {
+    public var sendID: Int64
+    public var fileID: Int64?
+    public var fileName: String
+    public var sha256: String?
+    public var familyID: Int64?
+    public var destinationKey: String
+    public var sentAt: Date
+
+    public init(sendID: Int64, fileID: Int64?, fileName: String, sha256: String?, familyID: Int64?, destinationKey: String, sentAt: Date) {
+        self.sendID = sendID; self.fileID = fileID; self.fileName = fileName; self.sha256 = sha256
+        self.familyID = familyID; self.destinationKey = destinationKey; self.sentAt = sentAt
+    }
+}
+
+/// A card shown earlier, for the 10-minute cool-down.
+public struct ShownCard: Sendable, Equatable {
+    public var rule: WarningRule
+    public var familyID: Int64?
+    public var at: Date
+    public init(rule: WarningRule, familyID: Int64?, at: Date) { self.rule = rule; self.familyID = familyID; self.at = at }
+}
+
+/// Everything known about one pick, gathered by the app from the ledger.
+public struct WarningInput: Sendable {
+    public var sendID: Int64
+    public var fileID: Int64?
+    public var fileName: String
+    public var sha256: String?
+    public var editedAt: Date?
+    public var familyID: Int64?
+    public var versionNumber: Int?
+    public var isVariant: Bool
+    public var exportOfID: Int64?
+    /// The other files in the family (not the picked one).
+    public var family: [FamilyFile]
+
+    public var destinationID: Int64
+    public var destinationKey: String
+    public var destinationLabel: String
+    /// The destination's domain and page title, for W4 ("part of the current destination").
+    public var destinationText: String
+    /// False when Fallback couldn't tell who the file is going to (a mail service, a chat app,
+    /// a destination it couldn't name): W4 never guesses (PRD 8.4 step 4).
+    public var destinationIdentified: Bool
+
+    public var pastSends: [PastSend]
+    /// Destination labels in the ledger plus names the user added (PRD 8.4 step 1), with their destination ids.
+    public var knownOrganisations: [String: Int64]
+    public var sensitivity: Sensitivity
+    public var familyMuted: Bool
+    public var destinationMuted: Bool
+    public var recentCards: [ShownCard]
+    public var now: Date
+
+    public init(sendID: Int64, fileID: Int64?, fileName: String, sha256: String?, editedAt: Date?, familyID: Int64?,
+                versionNumber: Int?, isVariant: Bool, exportOfID: Int64?, family: [FamilyFile],
+                destinationID: Int64, destinationKey: String, destinationLabel: String, destinationText: String,
+                destinationIdentified: Bool, pastSends: [PastSend], knownOrganisations: [String: Int64],
+                sensitivity: Sensitivity = .balanced, familyMuted: Bool = false, destinationMuted: Bool = false,
+                recentCards: [ShownCard] = [], now: Date = Date()) {
+        self.sendID = sendID; self.fileID = fileID; self.fileName = fileName; self.sha256 = sha256; self.editedAt = editedAt
+        self.familyID = familyID; self.versionNumber = versionNumber; self.isVariant = isVariant; self.exportOfID = exportOfID
+        self.family = family; self.destinationID = destinationID; self.destinationKey = destinationKey
+        self.destinationLabel = destinationLabel; self.destinationText = destinationText
+        self.destinationIdentified = destinationIdentified; self.pastSends = pastSends
+        self.knownOrganisations = knownOrganisations; self.sensitivity = sensitivity; self.familyMuted = familyMuted
+        self.destinationMuted = destinationMuted; self.recentCards = recentCards; self.now = now
+    }
+}
+
+/// One rule that fired, with what the card needs to say (Design/COPY.md).
+public struct Warning: Sendable, Equatable {
+    public var rule: WarningRule
+    /// The other file involved: the newer version (W1), the source (W5), the previous file (W3),
+    /// the other version (softer check).
+    public var otherFile: FamilyFile?
+    /// The earlier send involved (W2, W3).
+    public var previousSend: PastSend?
+    /// The organisation name found in the file name (W4) and its destination, if any.
+    public var token: String?
+    public var tokenDestinationID: Int64?
+}
+
+/// What the WarningEngine decided for one pick.
+public struct WarningResult: Sendable, Equatable {
+    /// Every rule that fired, most important first (PRD 8.2 precedence).
+    public var fired: [Warning]
+    /// The one to show as a card, if any. The rest appear under "More" and in the Ledger.
+    public var card: Warning?
+}
+
+/// PRD 8.1 to 8.4: decides which warnings fire for a pick and which one becomes a card.
+public enum WarningEngine {
+    static let alreadySentWindow: TimeInterval = 90 * 86_400
+    static let coolDown: TimeInterval = 10 * 60
+    static let softerCardWindow: TimeInterval = 7 * 86_400
+    static let tolerance: TimeInterval = 60
+    /// PRD 8.4 step 2: words that never count as organisation names.
+    static let commonWords: Set<String> = ["resume", "cv", "final", "draft", "proposal", "invoice", "deck", "the", "for",
+                                           "and", "copy", "new", "version", "updated", "revised", "latest", "cover", "letter"]
+    static let exportSources: Set<String> = ["docx", "doc", "pages", "key", "pptx", "ppt"]
+
+    public static func evaluate(_ input: WarningInput) -> WarningResult {
+        // Muting (PRD 8.2): a muted document or destination gets no warnings at all.
+        guard !input.familyMuted, !input.destinationMuted else { return WarningResult(fired: [], card: nil) }
+        var fired: [Warning] = []
+        if let w4 = nameMismatch(input) { fired.append(w4) }
+        if let w1 = olderVersion(input) { fired.append(w1) }
+        if let w5 = staleExport(input) { fired.append(w5) }
+        if let w3 = changedSinceLastSend(input) { fired.append(w3) }
+        if let w2 = alreadySent(input) { fired.append(w2) }
+        fired.sort { $0.rule.precedence < $1.rule.precedence }
+
+        let card = fired.first { warning in
+            guard input.sensitivity.showsCard(warning.rule) else { return false }
+            // The softer check is a card only if the other file changed in the last 7 days (PRD 8.3).
+            if warning.rule == .softer {
+                guard let edited = warning.otherFile?.editedAt, input.now.timeIntervalSince(edited) <= softerCardWindow else { return false }
+            }
+            // Cool-down: the same rule for the same document at most once every 10 minutes.
+            return !input.recentCards.contains {
+                $0.rule == warning.rule && $0.familyID == input.familyID && input.now.timeIntervalSince($0.at) < coolDown
+            }
+        }
+        return WarningResult(fired: fired, card: card)
+    }
+
+    // MARK: Saves (FR-27)
+
+    static let saveWindow: TimeInterval = 120
+
+    /// A "save": after a card about a document, a different file from the same document is picked
+    /// within 2 minutes. `card` is the card's document, file and time; `pick` is the new pick.
+    public static func isSave(card: (familyID: Int64?, fileID: Int64?, at: Date),
+                              pick: (familyID: Int64?, fileID: Int64?, at: Date)) -> Bool {
+        guard let family = card.familyID, family == pick.familyID, card.fileID != pick.fileID else { return false }
+        let elapsed = pick.at.timeIntervalSince(card.at)
+        return elapsed >= 0 && elapsed <= saveWindow
+    }
+
+    // MARK: W1 Older version (or the softer check)
+
+    /// Another file of the same format in the family is a High-confidence newer version. When the
+    /// order is unclear, or the picked file is a tailored variant, only the softer check applies.
+    static func olderVersion(_ input: WarningInput) -> Warning? {
+        let ext = (input.fileName as NSString).pathExtension.lowercased()
+        let sameFormat = input.family.filter { $0.ext == ext && $0.exportOfID == nil }
+        if !input.isVariant, let mine = input.versionNumber {
+            let newer = sameFormat
+                .filter { $0.relationToPicked == .version && !$0.isVariant && ($0.versionNumber ?? 0) > mine }
+                .max { ($0.versionNumber ?? 0) < ($1.versionNumber ?? 0) }
+            if let newer { return Warning(rule: .w1, otherFile: newer) }
+        }
+        // Softer: a sibling or unclear relative that changed more recently.
+        let mineEdited = input.editedAt ?? .distantPast
+        let other = sameFormat
+            .filter { [.variant, .unclear].contains($0.relationToPicked) || (input.isVariant && $0.relationToPicked == .version) }
+            .filter { ($0.editedAt ?? .distantPast) > mineEdited.addingTimeInterval(tolerance) }
+            .max { ($0.editedAt ?? .distantPast) < ($1.editedAt ?? .distantPast) }
+        return other.map { Warning(rule: .softer, otherFile: $0) }
+    }
+
+    // MARK: W2 Already sent
+
+    static func alreadySent(_ input: WarningInput) -> Warning? {
+        guard let sha = input.sha256 else { return nil }
+        let previous = input.pastSends
+            .filter { $0.sendID != input.sendID && $0.sha256 == sha && $0.destinationKey == input.destinationKey }
+            .filter { input.now.timeIntervalSince($0.sentAt) <= alreadySentWindow }
+            .max { $0.sentAt < $1.sentAt }
+        return previous.map { Warning(rule: .w2, previousSend: $0) }
+    }
+
+    // MARK: W3 Changed since last send
+
+    static func changedSinceLastSend(_ input: WarningInput) -> Warning? {
+        guard let family = input.familyID else { return nil }
+        let previous = input.pastSends
+            .filter { $0.sendID != input.sendID && $0.familyID == family && $0.destinationKey == input.destinationKey }
+            .filter { $0.sha256 != input.sha256 && $0.fileID != input.fileID }
+            .max { $0.sentAt < $1.sentAt }
+        guard let previous else { return nil }
+        let file = input.family.first { $0.id == previous.fileID }
+        return Warning(rule: .w3, otherFile: file, previousSend: previous)
+    }
+
+    // MARK: W4 Name mismatch (PRD 8.4)
+
+    static func nameMismatch(_ input: WarningInput) -> Warning? {
+        guard input.destinationIdentified else { return nil } // step 4: never guess
+        let known = Dictionary(input.knownOrganisations.compactMap { name, id in organisationKey(name).map { ($0, (name, id)) } },
+                               uniquingKeysWith: { first, _ in first })
+        let here = input.destinationText.lowercased() + " " + input.destinationLabel.lowercased()
+        for word in nameWords(input.fileName) {
+            guard let (name, id) = known[word], !here.contains(word) else { continue }
+            return Warning(rule: .w4, token: name, tokenDestinationID: id)
+        }
+        return nil
+    }
+
+    /// Step 2: words of the file name, CamelCase split, lowercased, without short or common words.
+    static func nameWords(_ fileName: String) -> [String] {
+        let base = (fileName as NSString).deletingPathExtension
+        let spaced = base.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression)
+        return spaced.lowercased().split { !$0.isLetter }.map(String.init)
+            .filter { $0.count >= 3 && !commonWords.contains($0) }
+    }
+
+    /// "Acme", "acme.co.in" and "#acme" all mean acme. Multi-word labels and generic ones don't count.
+    static func organisationKey(_ label: String) -> String? {
+        var text = label.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "#@ "))
+        if text.contains(".") { text = String(text.split(separator: ".").first ?? "") }
+        guard text.count >= 3, text.allSatisfy(\.isLetter), !commonWords.contains(text) else { return nil }
+        return text
+    }
+
+    // MARK: W5 Stale export
+
+    /// The picked file is a PDF, and the document it was exported from (or a source file with the
+    /// same family stem) was changed after the PDF.
+    static func staleExport(_ input: WarningInput) -> Warning? {
+        guard (input.fileName as NSString).pathExtension.lowercased() == "pdf", let pdfEdited = input.editedAt else { return nil }
+        let pdfStem = NameStem.stem(input.fileName)
+        let source = input.family
+            .filter { exportSources.contains($0.ext) }
+            .filter { $0.id == input.exportOfID || $0.relationToPicked == .export || (pdfStem != nil && NameStem.stem($0.name) == pdfStem) }
+            .filter { ($0.editedAt ?? .distantPast) > pdfEdited.addingTimeInterval(tolerance) }
+            .max { ($0.editedAt ?? .distantPast) < ($1.editedAt ?? .distantPast) }
+        return source.map { Warning(rule: .w5, otherFile: $0) }
+    }
+}

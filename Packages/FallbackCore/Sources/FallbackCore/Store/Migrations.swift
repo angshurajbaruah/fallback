@@ -130,5 +130,19 @@ enum Migrations {
             ALTER TABLE files ADD COLUMN export_of_id INTEGER REFERENCES files(id) ON DELETE SET NULL;
             """)
         }
+
+        // M4: what each warning was about, and what happened next (FR-27).
+        migrator.registerMigration("v4") { db in
+            try db.execute(sql: """
+            ALTER TABLE warnings ADD COLUMN family_id INTEGER;
+            ALTER TABLE warnings ADD COLUMN file_id INTEGER;
+            ALTER TABLE warnings ADD COLUMN other_file_id INTEGER;
+            ALTER TABLE warnings ADD COLUMN other_send_id INTEGER;
+            ALTER TABLE warnings ADD COLUMN token TEXT;
+            ALTER TABLE warnings ADD COLUMN detail TEXT;
+            CREATE INDEX warnings_created ON warnings(created_at);
+            CREATE INDEX warnings_send ON warnings(send_id);
+            """)
+        }
     }
 }

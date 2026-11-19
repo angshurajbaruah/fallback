@@ -50,6 +50,7 @@ public struct WarningRow: Sendable, Identifiable, Hashable, Decodable, Fetchable
     public var fileName: String
     public var destinationLabel: String
     public var appName: String
+    public var detail: String?
 }
 
 extension Store {
@@ -304,7 +305,8 @@ extension Store {
         try db.read { db in
             var sql = """
                 SELECT w.id AS id, w.rule AS rule, w.shown_as_card AS shownAsCard, w.outcome AS outcome,
-                       w.created_at AS createdAt, s.file_name_at_send AS fileName, d.label AS destinationLabel, s.app_name AS appName
+                       w.created_at AS createdAt, s.file_name_at_send AS fileName, d.label AS destinationLabel, s.app_name AS appName,
+                       w.detail AS detail
                 FROM warnings w JOIN sends s ON s.id = w.send_id JOIN destinations d ON d.id = s.destination_id
                 """
             var arguments: StatementArguments = []
