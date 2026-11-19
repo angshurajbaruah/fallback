@@ -13,17 +13,17 @@ Start Fallback with `cd ~/fallback && make run`.
 - Buttons: the fix (filled), **Send anyway**, and a quiet **Don't warn for this document** link (FR-25).
 - Every warning, card or not, is listed in the Ledger › **Warnings** (FR-27).
 
-**Sensitivity (PRD 8.2).** Fallback starts on **Balanced**: W1, W4, W5 and the softer check show as cards; W2 and W3 go to the Ledger only. The Settings screen to change this comes in M5; until then, ask Claude to switch to **Strict** if you want W2 and W3 as cards.
+**Sensitivity (PRD 8.2).** Fallback starts on **Balanced**: W1, W4, W5 and the softer check show as cards; W2 and W3 go to the Ledger only. Change it in Settings › **Warnings**. Pick **Strict** if you want W2 and W3 as cards.
 
-**Cool-down.** The same warning for the same document won't show as a card twice within 10 minutes. If a card doesn't appear on a repeat, that's why: it's still in Ledger › Warnings.
+**Cool-down.** The same warning for the same document won't show as a card twice within 10 minutes. If a card doesn't appear on a repeat, that's why: Ledger › Warnings lists it as "Already warned about this N minutes ago".
 
 ## 1. W1 Older version
 
 1. On the test page (any company, or Gmail with a new draft), pick `resume_v3.pdf`.
-2. **Expect** the card **Older version**: "resume_v3.pdf is older than v5, which you edited …". The strip shows the version you're picking (v1 in the Resume family) and v5.
+2. **Expect** the card **Older version**: "resume_v3.pdf is older than resume_v5.pdf, which you edited …". The strip shows each file's date: **5 Nov · picking now** → **{date} · edited {when}**.
 3. Click **Show newer file**: Finder opens with `resume_v5.pdf` selected.
 
-> The pills use the family's own version numbers. resume_v3.pdf is the oldest file in the Resume family, so it's v1 there, even though its name says v3.
+> Cards show dates, never version numbers. The Ledger and the document timeline still number the family (resume_v3.pdf is v1 there, as the oldest file).
 
 ## 2. W2 Already sent
 
@@ -47,6 +47,7 @@ Start Fallback with `cd ~/fallback && make run`.
 ## 5. W5 Out-of-date export
 
 1. Click **no company** (or use Gmail). Pick `Proposal_Acme.pdf`.
+   On the test page, "no company" is still named after the page title, so W4 also fires (under "more", or as the card if W4 hasn't shown for this document in the last 10 minutes). Gmail doesn't do this.
 2. **Expect** the card **Out-of-date export**: "Proposal_Acme.docx was edited after this PDF was made." The strip: PDF made 14 Nov → DOCX edited 18 Nov.
 3. **Reveal source document** opens Finder at the DOCX.
 
@@ -62,4 +63,4 @@ Pick `Resume_Razorpay.pdf`. **Expect** **Another version exists**, never "Older 
 
 ## Muting
 
-On any card, **Don't warn for this document** mutes that document for every rule; on W2, **Don't warn for this destination** mutes the place. Settings (M5) will let you undo it.
+On any card, **Don't warn for this document** mutes that document for every rule; on W2, **Don't warn for this destination** mutes the place. Undo it in Settings › Warnings › **Muted**. Later warnings for it are listed in the Ledger as "Muted for this document" (or destination), never as cards.
