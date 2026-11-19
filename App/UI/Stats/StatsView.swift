@@ -25,6 +25,11 @@ struct StatsView: View {
                         Text("\(stats.caught)").font(Theme.brand(52)).foregroundStyle(Theme.primary)
                         Text("you switched files after a warning").font(Theme.body).foregroundStyle(Theme.textMuted)
                     }
+                    .overlay {
+                        // The faint Frosted glow in screen 22's top-right corner.
+                        RadialGradient(colors: [Theme.frostedBlue.opacity(0.10), .clear], center: .topTrailing, startRadius: 0, endRadius: 220).allowsHitTesting(false)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius))
+                    }
                 }
                 card {
                     HStack {

@@ -4,9 +4,9 @@ import SwiftUI
 struct FrostToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {
-            HStack {
+            // No Spacer here: it fought the row's own Spacer and pushed chips and text off to the left.
+            HStack(spacing: 0) {
                 configuration.label
-                Spacer(minLength: 12)
                 Capsule()
                     .fill(configuration.isOn ? Theme.frostedBlue : Theme.line2)
                     .frame(width: 38, height: 22)
@@ -46,7 +46,8 @@ struct SettingsRow<Accessory: View>: View {
                 Text(title).font(Theme.body).foregroundStyle(Theme.text)
                 if let subtitle { Text(subtitle).font(Theme.caption).foregroundStyle(Theme.textMuted) }
             }
-            Spacer()
+            .layoutPriority(1)
+            Spacer(minLength: 12)
             accessory
         }
         .padding(.horizontal, 20)
@@ -72,6 +73,17 @@ struct Segmented<Value: Hashable>: View {
         }
         .padding(3)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 9))
+    }
+}
+
+extension Int64 {
+    /// "18.4 MB", and "0 KB" rather than Foundation's "Zero kB".
+    var fileSizeText: String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowsNonnumericFormatting = false
+        formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
+        return formatter.string(fromByteCount: self)
     }
 }
 

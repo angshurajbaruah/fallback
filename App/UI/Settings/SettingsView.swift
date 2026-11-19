@@ -25,15 +25,15 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             Text(tab.rawValue).font(Theme.windowTitle).padding(.top, 14)
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 ForEach(Tab.allCases, id: \.self) { item in
                     Button { tab = item } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: item.symbol).font(.system(size: 18))
+                        VStack(spacing: 5) {
+                            Image(systemName: item.symbol).font(.system(size: 16))
                                 .foregroundStyle(tab == item ? Theme.primary : Theme.textMuted)
                             Text(item.rawValue).font(Theme.body).foregroundStyle(tab == item ? Theme.text : Theme.textMuted)
                         }
-                        .frame(width: 92, height: 66)
+                        .frame(width: 68, height: 50)
                         .background(tab == item ? Theme.hoverFill : .clear, in: RoundedRectangle(cornerRadius: 10))
                         .contentShape(Rectangle())
                     }
@@ -56,7 +56,7 @@ struct SettingsView: View {
                 .padding(28)
             }
         }
-        .frame(width: 880, height: 820)
+        .frame(width: 720, height: 680)
         .background(Theme.surface2.opacity(0.6))
         .background(Theme.surface)
         .foregroundStyle(Theme.text)
@@ -170,7 +170,7 @@ private struct FoldersTab: View {
                             }
                             Spacer()
                             if let summary = summaries[path] {
-                                Text("\(summary.files.formatted()) files · \(summary.bytes.formatted(.byteCount(style: .file)))")
+                                Text("\(summary.files.formatted()) files · \(summary.bytes.fileSizeText)")
                                     .font(Theme.body).foregroundStyle(Theme.textMuted)
                             }
                         }
@@ -308,15 +308,15 @@ private struct AppsTab: View {
                 ForEach(Array(Self.apps.enumerated()), id: \.element.id) { index, app in
                     let installed = access[app.id] != .notInstalled
                     HStack(spacing: 16) {
-                        Avatar(label: app.name, size: 30)
+                        Avatar(label: app.name, size: 24)
                         Text(app.name).font(Theme.body).foregroundStyle(installed ? Theme.text : Theme.textMuted)
                         Spacer()
                         Text(detail(app)).font(Theme.body).foregroundStyle(Theme.textMuted)
-                        Chip(text: app.kind).frame(width: 110)
+                        Chip(text: app.kind).frame(width: 84)
                         Toggle("", isOn: Binding(get: { !model.disabledApps.contains(app.id) },
                                                  set: { model.setApp(app.id, enabled: $0) })).labelsHidden()
                     }
-                    .padding(.horizontal, 20).frame(height: 54)
+                    .padding(.horizontal, 14).frame(height: 40)
                     .overlay(alignment: .bottom) { if index < Self.apps.count - 1 { Rectangle().fill(Theme.line).frame(height: 1) } }
                 }
             }
@@ -401,7 +401,7 @@ private struct WarningsTab: View {
                 }
                 Text(detail).font(Theme.body).foregroundStyle(Theme.textMuted)
             }
-            .padding(18)
+            .padding(.horizontal, 14).padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(selected ? Theme.selectedFill : Theme.surface2, in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(selected ? Theme.focusBorder : Theme.line, lineWidth: selected ? 1.5 : 1))
@@ -422,21 +422,21 @@ private struct PrivacyTab: View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 24) {
-                Image("LogoMark").resizable().scaledToFit().frame(width: 52)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Everything stays on this Mac").font(.system(size: 17, weight: .semibold))
+                Image("LogoMark").resizable().scaledToFit().frame(width: 36)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Everything stays on this Mac").font(.system(size: 15, weight: .semibold))
                     Text("No account, no servers. Fallback stores fingerprints and details, never copies of your files.")
                         .font(Theme.body).foregroundStyle(Theme.textMuted)
                 }
             }
-            .padding(28)
+            .padding(.horizontal, 18).padding(.vertical, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(LinearGradient(colors: [Theme.surface2, Theme.frostedBlue.opacity(0.06)], startPoint: .leading, endPoint: .trailing),
+            .background(LinearGradient(colors: [Theme.frostedBlue.opacity(0.08), Theme.surface2], startPoint: .topLeading, endPoint: .bottomTrailing),
                         in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.line))
             SettingsGroup {
                 SettingsRow(title: "Stored on this Mac") {
-                    Text("\(counts.sends.formatted()) sends · \(counts.fingerprints.formatted()) fingerprints · \(counts.bytes.formatted(.byteCount(style: .file)))")
+                    Text("\(counts.sends.formatted()) sends · \(counts.fingerprints.formatted()) fingerprints · \(counts.bytes.fileSizeText)")
                         .font(Theme.body).foregroundStyle(Theme.textMuted)
                 }
                 SettingsRow(title: "Location") {
@@ -525,9 +525,9 @@ private struct AboutTab: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 180, height: 180)
-            Wordmark(size: 40)
+        VStack(spacing: 10) {
+            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 150, height: 150)
+            Wordmark(size: 30)
             Text(version).font(Theme.body).foregroundStyle(Theme.textMuted)
             Text("Never send the wrong file again, and always know what you sent.").font(Theme.body).foregroundStyle(Theme.textMuted)
                 .padding(.top, 8)
@@ -540,7 +540,7 @@ private struct AboutTab: View {
                 Button("Fallback saved me") { model.openWindow("stats") }.buttonStyle(FallbackButtonStyle(kind: .primary))
             }
             .padding(.top, 8)
-            Text("Open source under the MIT licence.").font(Theme.caption).foregroundStyle(Theme.textMuted).padding(.top, 20)
+            Text("Open source under the MIT licence.").font(Theme.caption).foregroundStyle(Theme.textMuted).padding(.top, 14)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 10)
