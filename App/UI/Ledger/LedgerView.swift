@@ -27,6 +27,7 @@ struct LedgerView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Theme.surface)
+        .background(LedgerBackGestures())
         .foregroundStyle(Theme.text)
         .frame(minWidth: 1080, minHeight: 620)
         .ignoresSafeArea()
@@ -56,23 +57,23 @@ struct LedgerView: View {
             Spacer().frame(height: 52) // room for the window buttons
             SidebarHeading(text: "Ledger")
             SidebarItem(symbol: "list.bullet", title: "All sends", count: total, selected: isAllSends) {
-                model.ledgerRoute = .allSends(selected: nil)
+                model.show(.allSends(selected: nil))
             }
             SidebarItem(symbol: "exclamationmark.circle", title: "Warnings", badge: warningCount, selected: isWarnings) {
-                model.ledgerRoute = .warnings
+                model.show(.warnings)
             }
             SidebarItem(symbol: "person", title: "By destination", count: nil, selected: isByDestination) {
-                model.ledgerRoute = .byDestination(selected: destinations.first?.id)
+                model.show(.byDestination(selected: destinations.first?.id))
             }
             SidebarItem(symbol: "square.on.square", title: "By document", count: nil, selected: isByDocument && selectedFamily == nil) {
-                model.ledgerRoute = .byDocument(family: nil)
+                model.show(.byDocument(family: nil))
             }
             if !destinations.isEmpty {
                 SidebarHeading(text: "Destinations").padding(.top, 18)
                 ForEach(destinations.prefix(6)) { place in
                     SidebarItem(avatar: place.label, title: place.label, count: place.sendCount,
                                 selected: selectedDestination == place.id) {
-                        model.ledgerRoute = .byDestination(selected: place.id)
+                        model.show(.byDestination(selected: place.id))
                     }
                 }
             }
@@ -82,7 +83,7 @@ struct LedgerView: View {
                 ForEach(documents.prefix(6)) { family in
                     SidebarItem(symbol: "square.on.square", title: family.name, count: family.memberCount,
                                 selected: selectedFamily == family.id) {
-                        model.ledgerRoute = .byDocument(family: family.id)
+                        model.show(.byDocument(family: family.id))
                     }
                 }
             }

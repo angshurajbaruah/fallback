@@ -24,6 +24,42 @@ final class AppModel {
     private(set) var pausedUntil: Date?
     private(set) var isTrusted = AXIsProcessTrusted()
     var ledgerRoute: LedgerRoute = .allSends(selected: nil)
+    /// Where the Ledger came from, for the breadcrumb, ⌘[ and swipe-back.
+    private(set) var backStack: [LedgerRoute] = []
+    var canGoBack: Bool { !backStack.isEmpty }
+
+    /// A drill-in or jump inside the Ledger: remembers the current view so you can go back.
+    func open(_ route: LedgerRoute) {
+        guard route != ledgerRoute else { return }
+        backStack.append(ledgerRoute)
+        if backStack.count > 50 { backStack.removeFirst() }
+        ledgerRoute = route
+    }
+
+    /// Top-level navigation (sidebar, popover): starts fresh, like a browser's address bar.
+    func show(_ route: LedgerRoute) {
+        backStack.removeAll()
+        ledgerRoute = route
+    }
+
+    func goBack() {
+        guard let previous = backStack.popLast() else { return }
+        ledgerRoute = previous
+    }
+
+    /// A short name for a Ledger view, for "‹ Resume" back links.
+    func title(of route: LedgerRoute) -> String {
+        switch route {
+        case .allSends: return "All sends"
+        case .warnings: return "Warnings"
+        case .byDestination(let id?):
+            return (try? store.destinations())?.first { $0.id == id }?.label ?? "By destination"
+        case .byDestination(nil): return "By destination"
+        case .byDocument(let id?):
+            return (try? store.families())?.first { $0.id == id }?.name ?? "By document"
+        case .byDocument(nil): return "By document"
+        }
+    }
     /// Folders being watched (FR-15) and the medium-confidence groups to suggest (PRD 8.3).
     private(set) var folders: [String] = []
     private(set) var suggestions: [[Int64]] = []

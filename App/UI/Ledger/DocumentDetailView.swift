@@ -67,7 +67,9 @@ struct DocumentDetailView: View {
     private var toolbar: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("By document").font(Theme.windowTitle)
+                HoverLink(text: "By document", font: Theme.windowTitle, help: "Back to all documents (⌘[)") {
+                    if model.backStack.last == .byDocument(family: nil) { model.goBack() } else { model.show(.byDocument(family: nil)) }
+                }
                 Text(family?.name ?? "").font(Theme.caption).foregroundStyle(Theme.textMuted)
             }
             Spacer()
@@ -203,7 +205,7 @@ struct DocumentDetailView: View {
                     Text("Never sent").font(Theme.caption).foregroundStyle(Theme.textMuted)
                 } else {
                     ForEach(mine.prefix(4)) { send in
-                        Button { model.ledgerRoute = .allSends(selected: send.id) } label: {
+                        Button { model.open(.allSends(selected: send.id)) } label: {
                             HStack(spacing: 6) {
                                 Avatar(label: send.destinationLabel, size: 16)
                                 Text("\(send.destinationLabel) · \(SendTime.short(send.sentAt))").font(Theme.caption.weight(.medium))

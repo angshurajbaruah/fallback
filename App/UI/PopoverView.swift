@@ -261,7 +261,7 @@ struct PopoverView: View {
     // MARK: Data
 
     private func openLedger(_ route: LedgerRoute) {
-        model.ledgerRoute = route
+        model.show(route)
         openWindow(id: "ledger")
         NSApp.activate()
     }

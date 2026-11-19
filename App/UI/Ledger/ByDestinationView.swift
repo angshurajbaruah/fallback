@@ -161,7 +161,7 @@ struct ByDestinationView: View {
                 Circle().fill(first ? Theme.frostedBlue : Theme.grey).frame(width: first ? 10 : 8, height: first ? 10 : 8)
             }
             .frame(width: 12, height: 62)
-            Button { model.ledgerRoute = .allSends(selected: send.id) } label: {
+            Button { model.open(.allSends(selected: send.id)) } label: {
                 HStack(spacing: 12) {
                     DocGlyph(ext: (send.fileName as NSString).pathExtension, height: 30)
                     VStack(alignment: .leading, spacing: 2) {

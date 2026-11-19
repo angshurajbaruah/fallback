@@ -51,6 +51,10 @@ struct AllSendsView: View {
 
     private var toolbar: some View {
         HStack(spacing: 14) {
+            if model.canGoBack {
+                BackLink()
+                Rectangle().fill(Theme.line2).frame(width: 1, height: 28)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text("All sends").font(Theme.windowTitle)
                 Text(total == 1 ? "1 send" : "\(total) sends").font(Theme.caption).foregroundStyle(Theme.textMuted)
@@ -326,7 +330,7 @@ struct SendInspector: View {
     private func familyStrip(_ family: FamilySummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Button(family.name + " family") { model.ledgerRoute = .byDocument(family: family.id) }
+                Button(family.name + " family") { model.open(.byDocument(family: family.id)) }
                     .buttonStyle(.plain).font(Theme.bodyMedium)
                 Spacer()
                 Text("\(family.versionCount) versions").font(Theme.caption).foregroundStyle(Theme.textMuted)

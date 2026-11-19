@@ -26,7 +26,7 @@ struct ByDocumentView: View {
                     if let suggestion, !suggestionFiles.isEmpty { banner(suggestion) }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 20)], spacing: 20) {
                         ForEach(families) { family in
-                            Button { model.ledgerRoute = .byDocument(family: family.id) } label: { card(family) }
+                            Button { model.open(.byDocument(family: family.id)) } label: { card(family) }
                                 .buttonStyle(.plain)
                         }
                     }

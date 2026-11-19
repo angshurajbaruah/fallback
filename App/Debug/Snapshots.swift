@@ -46,6 +46,11 @@ enum Snapshots {
         let resumeFamily = (try? detail.store.families())?.first { $0.name == "Resume" }?.id
         detail.ledgerRoute = .byDocument(family: resumeFamily)
         render(LedgerView().environment(detail), size: size, to: folder.appending(path: "12-document-detail.png"))
+        // Arrived at All sends from a document's timeline: "‹ Resume" leads back.
+        let jumped = sampleModel()
+        jumped.show(.byDocument(family: resumeFamily))
+        jumped.open(.allSends(selected: (try? jumped.store.sends(limit: 1))?.first?.id))
+        render(LedgerView().environment(jumped), size: size, to: folder.appending(path: "15-back-link.png"))
         let empty = try! AppModel(store: Store.inMemory())
         empty.debugSet(suggestions: [], folders: ["/Users/arjun/Documents", "/Users/arjun/Desktop", "/Users/arjun/Downloads"])
         render(LedgerView().environment(empty), size: size, to: folder.appending(path: "13-ledger-empty.png"))
