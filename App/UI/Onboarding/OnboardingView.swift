@@ -10,7 +10,8 @@ struct OnboardingView: View {
 
     init(step: Int = 1) { _step = State(initialValue: step) }
 
-    private let labels = ["Welcome", "", "Browsers", "Folders", "Indexing", "Try it"]
+    /// Step 1 has no label: the dots and "1 of 6" already say where you are.
+    private let labels = ["", "", "Browsers", "Folders", "Indexing", "Try it"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -108,19 +109,45 @@ private struct StepText: View {
     }
 }
 
-// MARK: 1 Welcome (screen 10)
+// MARK: 1 Welcome (screen 10, option B)
 
 private struct WelcomeStep: View {
     var body: some View {
+        // The Spacers centre the group between the header and the footer.
         VStack(spacing: 0) {
-            Spacer()
-            HStack(spacing: 40) {
-                Image("LogoMark").resizable().scaledToFit().frame(height: 86)
-                Wordmark(size: 66)
+            Spacer(minLength: 0)
+            content.background(alignment: .top) { bloom } // behind, and not part of the centring
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// One soft Frosted Blue bloom behind the greeting (BRAND.md: one bloom at most): a 460×280 oval
+    /// blurred by 70 at 50%, drawn as a gradient (cheaper than a live blur, and it renders in snapshots).
+    private var bloom: some View {
+        EllipticalGradient(stops: [.init(color: Theme.frostedBlue.opacity(0.5), location: 0),
+                                   .init(color: Theme.frostedBlue.opacity(0.4), location: 0.4),
+                                   .init(color: Theme.frostedBlue.opacity(0), location: 1)])
+            .frame(width: 460 + 140, height: 280 + 140)
+            .offset(y: -50 - 70)
+            .allowsHitTesting(false).accessibilityHidden(true)
+    }
+
+    private var content: some View {
+        VStack(spacing: 0) {
+            Text("Welcome to")
+                .font(.custom("Sora", size: 27).weight(.regular)).tracking(27 * -0.015)
+                .foregroundStyle(Theme.textMuted)
+            HStack(spacing: 18) {
+                Image("LogoMark").resizable().scaledToFit().frame(height: 54)
+                Wordmark(size: 42)
             }
-            Spacer().frame(height: 110)
-            StepText(title: "Never send the wrong file again",
-                     body_: "Fallback sits quietly in your menu bar, remembers every file you send and where it went, and speaks up before the wrong version goes out.")
+            .padding(.top, 20)
+            Text("Never send the wrong file again").font(Theme.brand(23)).multilineTextAlignment(.center)
+                .padding(.top, 36)
+            Text("Fallback sits quietly in your menu bar, remembers every file you send and where it went, and speaks up before the wrong version goes out.")
+                .font(.system(size: 13.5)).foregroundStyle(Theme.textMuted)
+                .multilineTextAlignment(.center).frame(maxWidth: 470).fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
             HStack(spacing: 10) {
                 Circle().fill(Theme.frostedBlue).frame(width: 8, height: 8)
                     .overlay(Circle().stroke(Theme.frostedBlue.opacity(0.3), lineWidth: 4))
@@ -128,8 +155,7 @@ private struct WelcomeStep: View {
             }
             .padding(.horizontal, 18).frame(height: 40)
             .overlay(Capsule().strokeBorder(Theme.line2))
-            .padding(.top, 26)
-            Spacer()
+            .padding(.top, 20)
         }
     }
 }
