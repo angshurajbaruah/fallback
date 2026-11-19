@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Snapshots.runIfRequested() || Scenarios.runIfRequested() { exit(0) }
         #endif
         model.start()
+        model.claimLoginItem()
         // After onboarding: re-adds Fallback to the list and shows macOS's prompt if access was removed.
         // (On first run, onboarding's step 2 asks instead.)
         if model.onboardingDone { _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) }

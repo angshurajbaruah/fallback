@@ -35,11 +35,20 @@ extension AppModel {
         set {
             do {
                 if newValue { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+                set("launch_at_login", newValue ? "1" : "0")
             } catch {
                 log.add("SETTINGS", "launch at login: \(error.localizedDescription)")
             }
             changed()
         }
+    }
+
+    /// FR-29: the login item points at the copy that registered it. When the installed copy in
+    /// /Applications starts, it takes the login item over (unless it was switched off), so a
+    /// development build run from the build folder never ends up starting at login.
+    func claimLoginItem() {
+        guard onboardingDone, Bundle.main.bundlePath.hasPrefix("/Applications/"), setting("launch_at_login") != "0" else { return }
+        do { try SMAppService.mainApp.register() } catch { log.add("SETTINGS", "launch at login: \(error.localizedDescription)") }
     }
 
     var tickOnSend: Bool {

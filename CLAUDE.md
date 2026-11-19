@@ -20,7 +20,7 @@ light mode swaps tokens, same layout. Never invent a screen,
 state or look that isn't designed: ask first.
 
 ## Commands
-make gen | make build | make test | make run
+make gen | make build | make test | make run | make install (Release to /Applications)
 
 ## Rules
 - Privacy is the product: no network calls except Sparkle.
