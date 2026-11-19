@@ -143,7 +143,18 @@ public enum FamilyEngine {
         let suggestions = suggest.components()
             .filter { $0.count > 1 && $0.allSatisfy(suggested.contains) }
             .map { roots in files.map(\.id).filter { roots.contains(families.find($0)) } }
-        return FamilyResult(groups: groups, links: links, suggestions: suggestions)
+        // A tailored variant is never "older" or "newer" than the main line (PRD 8.3): links between
+        // a variant and a version are labelled .variant, matching the family view, so W1 can't fire.
+        let variantIDs = Set(groups.flatMap(\.variants))
+        let mainLine = Set(groups.flatMap { $0.versions.keys })
+        let labelled = links.map { link -> FamilyLink in
+            var link = link
+            let oneEachSide = (variantIDs.contains(link.a) && mainLine.contains(link.b))
+                || (variantIDs.contains(link.b) && mainLine.contains(link.a))
+            if oneEachSide, link.relation == .version || link.relation == .unclear { link.relation = .variant }
+            return link
+        }
+        return FamilyResult(groups: groups, links: labelled, suggestions: suggestions)
     }
 
     // MARK: Pairwise evidence

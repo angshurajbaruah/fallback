@@ -351,6 +351,27 @@ struct FamilyEngineTests {
         #expect(Set(group.exportOf.values) == [3]) // the PDFs pair with the Word source
     }
 
+    /// ~/FallbackTest after the date fix: the tailored copies are newer than resume_v3 and older than
+    /// resume_v5, but they must never be "versions" of the main line (README: never "older").
+    @Test func tailoredVariants_neverVersionsOfTheMainLine() {
+        let files = [
+            file(1, "resume_v3.pdf", text: Fixtures.resume, edited: 0),
+            file(2, "final.pdf", text: Fixtures.resume, edited: 5 * day),
+            file(3, "Resume_Razorpay.pdf", text: Fixtures.resumeEdited, edited: 11 * day),
+            file(4, "Resume_Emergent.pdf", text: Fixtures.resumeEdited, edited: 12 * day),
+            file(5, "resume_v5.pdf", text: Fixtures.resume, edited: 13 * day),
+        ]
+        let result = FamilyEngine.build(files: files)
+        let group = result.groups.first!
+        #expect(group.variants == [3, 4])
+        #expect(group.versions == [1: 1, 2: 2, 5: 3])
+        for link in result.links where [3, 4].contains(link.a) || [3, 4].contains(link.b) {
+            #expect(link.relation == .variant, "\(link.a)–\(link.b) was \(link.relation)")
+        }
+        let v3v5 = result.links.first { Set([$0.a, $0.b]) == [1, 5] }
+        #expect(v3v5?.relation == .version)
+    }
+
     @Test func singleFileIsItsOwnFamily() {
         let result = FamilyEngine.build(files: [file(1, "Invoice_Nov_Acme.pdf")])
         #expect(result.groups.count == 1 && result.groups[0].versions == [1: 1])
