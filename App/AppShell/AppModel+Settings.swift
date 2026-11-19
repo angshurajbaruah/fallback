@@ -142,7 +142,8 @@ extension AppModel {
         changed()
     }
 
-    enum BrowserAccess: Equatable { case allowed, denied, notAsked, notRunning, notInstalled }
+    /// `noAnswer`: macOS says yes, but the browser didn't reply to a real request.
+    enum BrowserAccess: Equatable { case allowed, denied, notAsked, notRunning, notInstalled, noAnswer }
 
     /// Whether Fallback may read this browser's page address, without asking.
     nonisolated static func browserAccess(_ bundleID: String, ask: Bool = false) -> BrowserAccess {
@@ -167,7 +168,18 @@ extension AppModel {
             try? await Task.sleep(for: .seconds(1.5))
         }
         // Asking blocks until the person answers macOS's prompt, so it runs off the main thread.
-        return await Task.detached { Self.browserAccess(bundleID, ask: true) }.value
+        let access = await Task.detached { Self.browserAccess(bundleID, ask: true) }.value
+        return access == .allowed ? Self.verifyBrowser(bundleID) : access
+    }
+
+    /// Proves it works: asks the browser a real question over Apple Events, the same channel that reads
+    /// the page address at pick time (FR-4). macOS saying "allowed" isn't enough on its own.
+    static func verifyBrowser(_ bundleID: String) -> BrowserAccess {
+        var error: NSDictionary?
+        let script = "with timeout of 3 seconds\ntell application id \"\(bundleID)\" to count windows\nend timeout"
+        _ = NSAppleScript(source: script)?.executeAndReturnError(&error)
+        guard let error else { return .allowed }
+        return (error[NSAppleScript.errorNumber] as? Int) == -1743 ? .denied : .noAnswer
     }
 
     // MARK: Warnings (screen 19)

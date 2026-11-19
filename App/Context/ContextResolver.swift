@@ -35,7 +35,8 @@ enum ContextResolver {
             context.url = String(parts[0])
             context.tabTitle = String(parts[1])
         } else {
-            context.note = "✗ couldn't read the tab (Apple Events): \(describe(error))"
+            let waiting = AppModel.browserAccess(bundleID) == .notAsked ? " (macOS hasn't been told yet whether Fallback may control it)" : ""
+            context.note = "✗ couldn't read the tab (Apple Events): \(describe(error))\(waiting)"
         }
         return context
     }

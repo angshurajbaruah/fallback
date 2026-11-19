@@ -283,7 +283,11 @@ private struct BrowsersStep: View {
             Spacer()
         }
         .task {
-            for browser in BrowserInfo.all { access[browser.id] = AppModel.browserAccess(browser.id) }
+            for browser in BrowserInfo.all {
+                let stored = AppModel.browserAccess(browser.id)
+                // "Allowed" only once the browser has actually answered.
+                access[browser.id] = stored == .allowed ? AppModel.verifyBrowser(browser.id) : stored
+            }
         }
     }
 
@@ -294,7 +298,7 @@ private struct BrowsersStep: View {
         case .denied?:
             Chip(text: "Not allowed").help("Turn it on in System Settings › Privacy & Security › Automation › Fallback.")
         default:
-            Button(testing == browser.id ? "Testing…" : "Test now") {
+            Button(testing == browser.id ? "Testing…" : access[browser.id] == .noAnswer ? "Test again" : "Test now") {
                 testing = browser.id
                 Task {
                     access[browser.id] = await model.testBrowser(browser.id)
@@ -303,6 +307,7 @@ private struct BrowsersStep: View {
             }
             .buttonStyle(FallbackButtonStyle(kind: .quiet))
             .disabled(testing != nil)
+            .help(access[browser.id] == .noAnswer ? "\(browser.name) didn't answer. Make sure it isn't showing a dialog, then test again." : "")
         }
     }
 }
