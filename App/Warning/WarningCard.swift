@@ -34,14 +34,14 @@ struct WarningCardContent: Equatable {
         let destination = input.destinationLabel
         let other = warning.otherFile
         let otherLabel = other?.versionNumber.map { "v\($0)" } ?? other?.name ?? "another file"
-        let myVersion = input.versionNumber.map { "v\($0)" } ?? "This file"
         switch warning.rule {
         case .w1:
             tone = .warning
             title = "Older version"
             body = [(file, true), (" is older than ", false), (otherLabel, true), (", which you edited \(Self.when(other?.editedAt)).", false)]
-            pills = [Pill(title: myVersion, subtitle: "picking now", kind: .bad),
-                     Pill(title: otherLabel, subtitle: "edited \(Self.when(other?.editedAt, on: false))", kind: .good)]
+            // Pills show dates, not family version numbers: "v1" next to resume_v3.pdf read as a contradiction.
+            pills = [Pill(title: Self.when(input.editedAt, on: false), subtitle: "picking now", kind: .bad),
+                     Pill(title: Self.when(other?.editedAt, on: false), subtitle: "edited \(Self.when(other?.editedAt, on: false))", kind: .good)]
             primary = "Show newer file"; secondary = "Send anyway"; mute = "Don't warn for this document"
         case .w2:
             tone = .info
@@ -53,8 +53,8 @@ struct WarningCardContent: Equatable {
             title = "Heads up"
             let old = warning.previousSend
             body = [(destination, true), (" has an earlier version (\(old?.fileName ?? "another file"), \(Self.date(old?.sentAt))).", false)]
-            pills = [Pill(title: other?.versionNumber.map { "v\($0)" } ?? "Earlier", subtitle: "\(destination) has", kind: .neutral),
-                     Pill(title: myVersion, subtitle: "sending now", kind: .good)]
+            pills = [Pill(title: Self.when(other?.editedAt, on: false), subtitle: "\(destination) has", kind: .neutral),
+                     Pill(title: Self.when(input.editedAt, on: false), subtitle: "sending now", kind: .good)]
             primary = "Show what they have"; secondary = "Send anyway"; mute = "Don't warn for this document"
         case .w4:
             tone = .warning
