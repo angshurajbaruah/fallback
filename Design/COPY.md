@@ -21,7 +21,7 @@ The destination-unknown card has a focused text field labelled "Label this send"
 
 When more than one rule fires (FR-24), the mute row shows "{n} more check(s) ›" on the right.
 
-Version strip labels: W1 shows "{date} · picking now" → "{date} · edited {when}". W3 shows "{date} · {destination} has" → "{date} · sending now". Each {date} is that file's own last-edited date ("today", "yesterday", "5 Nov"). Cards never show family version numbers (v1, v2…), since they can contradict the number in a file name; the Ledger and the document timeline keep them, where the whole family is on screen. W5 shows "PDF · made {date}" → "{TYPE} · edited {when}".
+Version strip labels: W1 shows "{date} · picking now" → "{date} · edited {when}". W3 shows "{date} · {destination} has" → "{date} · sending now". Each {date} is that file's own last-edited date ("today", "yesterday", "5 Nov"). In the W1 body, {newer} is the newer file's name (e.g. resume_v5.pdf). Cards never show family version numbers (v1, v2…), since they can contradict the number in a file name; the Ledger and the document timeline keep them, where the whole family is on screen. W5 shows "PDF · made {date}" → "{TYPE} · edited {when}".
 
 ## Menu-bar popover (S1)
 

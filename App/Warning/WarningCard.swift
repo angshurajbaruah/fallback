@@ -33,12 +33,11 @@ struct WarningCardContent: Equatable {
         let file = input.fileName
         let destination = input.destinationLabel
         let other = warning.otherFile
-        let otherLabel = other?.versionNumber.map { "v\($0)" } ?? other?.name ?? "another file"
         switch warning.rule {
         case .w1:
             tone = .warning
             title = "Older version"
-            body = [(file, true), (" is older than ", false), (otherLabel, true), (", which you edited \(Self.when(other?.editedAt)).", false)]
+            body = [(file, true), (" is older than ", false), (other?.name ?? "another version", true), (", which you edited \(Self.when(other?.editedAt)).", false)]
             // Pills show dates, not family version numbers: "v1" next to resume_v3.pdf read as a contradiction.
             pills = [Pill(title: Self.when(input.editedAt, on: false), subtitle: "picking now", kind: .bad),
                      Pill(title: Self.when(other?.editedAt, on: false), subtitle: "edited \(Self.when(other?.editedAt, on: false))", kind: .good)]
