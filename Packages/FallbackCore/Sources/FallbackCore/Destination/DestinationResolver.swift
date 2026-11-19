@@ -18,6 +18,8 @@ public struct DestinationResolver: Sendable {
         var web: [Rule]
         var apps: [AppRule]
         var multiPartSuffixes: [String]
+        /// Browsers: a send from one of these without a usable page address is a genuinely unknown destination.
+        var browsers: [String]?
     }
 
     /// Regexes may capture `(?<label>…)`; a rule applies when every regex it has matches, except
@@ -55,8 +57,26 @@ public struct DestinationResolver: Sendable {
             return Destination(key: "page:\(first.lowercased())", label: first, source: .fallback)
         }
         if let title, let found = app(bundleID: appBundleID, title: title) { return found }
+        // A browser that gave no page address (no Apple Events permission, or Firefox): Fallback can't tell
+        // where the file went. Each window title is its own unknown place, so labelling one doesn't relabel all.
+        if rules.browsers?.contains(appBundleID) == true {
+            let window = Self.windowTitle(title ?? "", appName: appName)
+            return Destination(key: "window:\(appBundleID):\(window.lowercased())", label: "Unlabelled", source: .fallback)
+        }
         return Destination(key: "app:\(appBundleID)", label: appName, source: .fallback)
     }
+
+    /// A window's title without the browser's name and profile: "Upload - Google Chrome – Anshu" → "Upload".
+    public static func windowTitle(_ title: String, appName: String) -> String {
+        let pattern = #"\s[-–—]\s(Google Chrome|Chrome|Safari|Mozilla Firefox|Firefox|Brave|Microsoft Edge|Edge|Arc|Vivaldi)\b.*$"#
+        let trimmed = title.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        return String(trimmed.prefix(80))
+    }
+
+    /// True for a destination Fallback couldn't resolve at all (FR-37). Not for apps like Mail or Slack,
+    /// where the app itself is the destination (Medium confidence).
+    public static func isUnknown(key: String) -> Bool { key.hasPrefix("window:") }
 
     private func web(host: String, path: String, title: String) -> Destination? {
         for rule in rules.web {

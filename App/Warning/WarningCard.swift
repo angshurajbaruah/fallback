@@ -3,7 +3,7 @@ import SwiftUI
 
 /// What one card shows, built from a Warning with the wording in Design/COPY.md.
 struct WarningCardContent: Equatable {
-    enum Tone { case warning, info }
+    enum Tone { case warning, info, neutral }
     struct Pill: Equatable {
         enum Kind { case bad, good, neutral }
         var title: String
@@ -76,6 +76,11 @@ struct WarningCardContent: Equatable {
             body = [("There's another version of this document (", false), (other?.name ?? "another file", true),
                     (", edited \(Self.when(other?.editedAt, on: false))). Check you've picked the right one.", false)]
             primary = "Show other version"; secondary = "It's the right one"; mute = "Don't warn for this document"
+        case .unknownDestination:
+            tone = .neutral
+            title = "Recorded, destination unknown"
+            body = [("Recorded ", false), (file, true), (". Couldn't tell where it was going, so add a label.", false)]
+            primary = "Add a label"; secondary = "Not a send"; mute = nil
         }
     }
 
@@ -98,6 +103,8 @@ struct WarningCardContent: Equatable {
 struct WarningCardView: View {
     let content: WarningCardContent
     var onPrimary: () -> Void
+    /// FR-37: "Add a label" with what was typed.
+    var onLabel: (String) -> Void = { _ in }
     var onSecondary: () -> Void
     var onMute: () -> Void
     var onMore: () -> Void
@@ -107,6 +114,9 @@ struct WarningCardView: View {
     static let duration: Double = 10
     @State private var remaining = WarningCardView.duration
     @State private var hovering = false
+    @State private var label = ""
+    @FocusState private var labelFocused: Bool
+    private var asksForLabel: Bool { content.warning.rule == .unknownDestination }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -120,8 +130,14 @@ struct WarningCardView: View {
                     }
                     if !content.pills.isEmpty { pillStrip }
                     if let mismatch = content.mismatch { mismatchStrip(mismatch) }
+                    if asksForLabel { labelField }
                     HStack(spacing: 8) {
-                        Button(content.primary, action: onPrimary).buttonStyle(CardButtonStyle(primary: true))
+                        Button(content.primary) {
+                            if !asksForLabel { onPrimary() }
+                            else if label.trimmingCharacters(in: .whitespaces).isEmpty { labelFocused = true }
+                            else { onLabel(label.trimmingCharacters(in: .whitespaces)) }
+                        }
+                        .buttonStyle(CardButtonStyle(primary: true))
                         Button(content.secondary, action: onSecondary).buttonStyle(CardButtonStyle(primary: false))
                     }
                     if content.mute != nil || content.moreChecks > 0 {
@@ -161,7 +177,8 @@ struct WarningCardView: View {
             while remaining > 0 {
                 try? await Task.sleep(for: .milliseconds(50))
                 if Task.isCancelled { return }
-                if !hovering { remaining = max(0, remaining - 0.05) }
+                // Paused while hovered, or while a label is being typed.
+                if !hovering && !labelFocused && label.isEmpty { remaining = max(0, remaining - 0.05) }
             }
             onTimeout()
         }
@@ -182,13 +199,36 @@ struct WarningCardView: View {
         }
     }
 
+    /// Severity tile: Tangerine for warnings, Frosted Blue for info, neutral (Lavender Blush 8%) otherwise.
     private var tile: some View {
-        let warning = content.tone == .warning
-        return Image(systemName: warning ? "exclamationmark.circle" : "info.circle")
+        let (symbol, colour, tint): (String, Color, Color) = switch content.tone {
+        case .warning: ("exclamationmark.circle", Theme.warningText, Theme.warningTint)
+        case .info: ("info.circle", Theme.primary, Theme.infoTint)
+        case .neutral: ("doc.text", Theme.text, Theme.line)
+        }
+        return Image(systemName: symbol)
             .font(.system(size: 15))
-            .foregroundStyle(warning ? Theme.warningText : Theme.primary)
+            .foregroundStyle(colour)
             .frame(width: 30, height: 30)
-            .background(warning ? Theme.warningTint : Theme.infoTint, in: RoundedRectangle(cornerRadius: 9))
+            .background(tint, in: RoundedRectangle(cornerRadius: 9))
+    }
+
+    /// "Label this send", placeholder "e.g. Acme finance". Typing starts only once it's clicked (FR-26).
+    private var labelField: some View {
+        HStack(spacing: 8) {
+            Text("Label this send").font(.system(size: 12)).foregroundStyle(Theme.text)
+            TextField("", text: $label, prompt: Text("e.g. Acme finance").foregroundStyle(Theme.textMuted))
+                .textFieldStyle(.plain).font(.system(size: 12)).multilineTextAlignment(.trailing)
+                .focused($labelFocused)
+                .onSubmit { if !label.trimmingCharacters(in: .whitespaces).isEmpty { onLabel(label.trimmingCharacters(in: .whitespaces)) } }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(Theme.bg, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8).strokeBorder(labelFocused ? Theme.focusBorder : Theme.line2)
+            if labelFocused { RoundedRectangle(cornerRadius: 10).stroke(Theme.focusGlow, lineWidth: 3.5).padding(-2) }
+        }
     }
 
     private var bodyText: Text {

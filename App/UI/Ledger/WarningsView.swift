@@ -124,6 +124,7 @@ private struct WarningTableRow: View {
         case "W3": "Changed since last send"
         case "W4": "Check the recipient"
         case "W5": "Out-of-date export"
+        case "U": "Destination unknown"
         default: "Another version exists"
         }
     }
@@ -133,14 +134,15 @@ private struct WarningTableRow: View {
     var body: some View {
         HStack(spacing: 0) {
             HStack(spacing: 14) {
-                Image(systemName: isWarning ? "exclamationmark.circle" : "info.circle")
-                    .foregroundStyle(isWarning ? Theme.warningText : Theme.primary)
+                Image(systemName: row.rule == "U" ? "doc.text" : isWarning ? "exclamationmark.circle" : "info.circle")
+                    .foregroundStyle(row.rule == "U" ? Theme.text : isWarning ? Theme.warningText : Theme.primary)
                     .frame(width: 30, height: 30)
-                    .background(isWarning ? Theme.warningTint : Theme.infoTint, in: RoundedRectangle(cornerRadius: 9))
+                    .background(row.rule == "U" ? Theme.line : isWarning ? Theme.warningTint : Theme.infoTint,
+                                in: RoundedRectangle(cornerRadius: 9))
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(title).font(Theme.bodyMedium)
-                        Text(row.rule).font(Theme.caption).foregroundStyle(Theme.textMuted)
+                        if row.rule.hasPrefix("W") { Text(row.rule).font(Theme.caption).foregroundStyle(Theme.textMuted) }
                     }
                     Text("\(row.fileName) → \(row.destinationLabel) · \(shortAppName(row.appName))")
                         .font(Theme.caption).foregroundStyle(Theme.textMuted).lineLimit(1)
@@ -161,6 +163,8 @@ private struct WarningTableRow: View {
         case "fixed": ("Saved", Theme.infoTint, Theme.primary)
         case "sent_anyway": ("Sent anyway", Theme.hoverFill, Theme.text)
         case "muted": ("Muted", Theme.warningTint, Theme.warningText)
+        case "labelled": ("Labelled", Theme.hoverFill, Theme.text)
+        case "not_a_send": ("Not a send", Theme.hoverFill, Theme.text)
         case nil where !row.shownAsCard: ("Ledger only", Theme.hoverFill, Theme.textMuted)
         default: ("Dismissed", Theme.hoverFill, Theme.text)
         }

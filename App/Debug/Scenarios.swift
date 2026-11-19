@@ -58,6 +58,15 @@ enum Scenarios {
             say("+ Softer · send Resume_Razorpay.pdf")
             run.send("Resume_Razorpay.pdf", to: "https://jobs.ashbyhq.com/northwind/apply", title: "Apply", say: say, card: out, name: "7-softer")
         }
+        // FR-37: a browser that gave no address. Asked once per window; never above a warning.
+        do {
+            let run = try! Run()
+            say("+ FR-37 · resume_v5.pdf in a Chrome window with no address (\"Upload\"), twice")
+            run.send("resume_v5.pdf", to: nil, title: "Upload - Google Chrome", say: say, card: out, name: "8-unknown")
+            run.send("resume_v5.pdf", to: nil, title: "Upload - Google Chrome", say: say, card: out, name: "8-unknown-again")
+            say("+ FR-37 · resume_v3.pdf in another unknown window")
+            run.send("resume_v3.pdf", to: nil, title: "Attach a file - Google Chrome", say: say, card: out, name: "8-unknown-w1")
+        }
         try? report.joined(separator: "\n").write(to: out.appending(path: "report.txt"), atomically: true, encoding: .utf8)
         return true
     }
@@ -89,7 +98,7 @@ enum Scenarios {
         }
 
         /// Records a send like the app does after a pick, then runs the warnings exactly as the app does.
-        func send(_ name: String, to url: String, title: String, say: (String) -> Void, card folder: URL, name pngName: String) {
+        func send(_ name: String, to url: String?, title: String, say: (String) -> Void, card folder: URL, name pngName: String) {
             let path = (self.folder as NSString).appendingPathComponent(name)
             let destination = resolver.resolve(url: url, title: title, appBundleID: "com.google.Chrome", appName: "Google Chrome")
             guard let sendID = try? store.record(NewSend(path: path, fileName: name, appBundleID: "com.google.Chrome", appName: "Google Chrome",
@@ -109,6 +118,7 @@ enum Scenarios {
             say("   \(name) → \(destination.label): fired [\(fired.isEmpty ? "none" : fired)], card: \(result.card?.rule.rawValue ?? "none")")
             if let card = result.card, let cardID {
                 lastCard = (cardID, input.familyID, input.fileID, Date())
+                if card.rule == .unknownDestination { try? store.markLabelAsked(destination: input.destinationID) }
                 let content = WarningCardContent(card, input: input, moreChecks: result.fired.count - 1, appName: "Chrome")
                 Snapshots.render(WarningCardView(content: content, onPrimary: {}, onSecondary: {}, onMute: {}, onMore: {},
                                                  onClose: {}, onTimeout: {}),

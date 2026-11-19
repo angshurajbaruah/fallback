@@ -63,6 +63,8 @@ public struct SendRow: Sendable, Identifiable, Hashable, Decodable, FetchableRec
 
     /// The quiet second line under a destination: the site for web sends, the app otherwise.
     public var placeDetail: String {
+        // FR-37: an unknown place is described by its window, as in screen 04 ("Window: Upload").
+        if DestinationResolver.isUnknown(key: destinationKey) { return "Window: \(pageTitle.map { DestinationResolver.windowTitle($0, appName: appName) } ?? "untitled")" }
         if let url, let host = URL(string: url)?.host(), !host.isEmpty {
             return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
         }

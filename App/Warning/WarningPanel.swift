@@ -4,7 +4,10 @@ import SwiftUI
 /// PRD 9.7 / FR-26: a floating, non-activating panel at the top right, under the menu bar.
 /// It sits above normal windows but never takes keyboard focus, so typing in the browser carries on.
 final class WarningPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    /// Only the "destination unknown" card takes typing, and only after its field is clicked
+    /// (becomesKeyOnlyIfNeeded). Every other card can never become key.
+    var acceptsTyping = false
+    override var canBecomeKey: Bool { acceptsTyping }
     override var canBecomeMain: Bool { false }
 
     init() {
@@ -33,9 +36,10 @@ final class WarningPresenter {
     private var panel: WarningPanel?
     private let margin: CGFloat = 12
 
-    func show<Content: View>(_ view: Content) {
+    func show<Content: View>(_ view: Content, acceptsTyping: Bool = false) {
         dismiss(animated: false)
         let panel = WarningPanel()
+        panel.acceptsTyping = acceptsTyping
         let host = FirstMouseHostingView(rootView: view)
         host.frame.size = host.fittingSize
         panel.contentView = host

@@ -3,6 +3,8 @@ import Foundation
 /// The five rules of PRD 8.1, plus the softer "Another version exists" check from 8.3.
 public enum WarningRule: String, Sendable, Codable, CaseIterable {
     case w1 = "W1", w2 = "W2", w3 = "W3", w4 = "W4", w5 = "W5", softer = "S"
+    /// FR-37: "Recorded, destination unknown". Neutral, not a warning, and never above one.
+    case unknownDestination = "U"
 
     /// PRD 8.2 precedence: W4, then W1 (or its softer form), then W5, then W3, then W2.
     var precedence: Int {
@@ -12,6 +14,7 @@ public enum WarningRule: String, Sendable, Codable, CaseIterable {
         case .w5: 2
         case .w3: 3
         case .w2: 4
+        case .unknownDestination: 9
         }
     }
 
@@ -26,7 +29,7 @@ public enum Sensitivity: String, Sendable, CaseIterable {
     func showsCard(_ rule: WarningRule) -> Bool {
         switch self {
         case .strict: true
-        case .balanced: [.w1, .w4, .w5, .softer].contains(rule)
+        case .balanced: [.w1, .w4, .w5, .softer, .unknownDestination].contains(rule)
         case .quiet: [.w1, .w4].contains(rule)
         }
     }
@@ -107,13 +110,15 @@ public struct WarningInput: Sendable {
     public var destinationMuted: Bool
     public var recentCards: [ShownCard]
     public var now: Date
+    /// FR-37: the destination couldn't be resolved, has no user label, and hasn't been asked about before.
+    public var askForLabel: Bool = false
 
     public init(sendID: Int64, fileID: Int64?, fileName: String, sha256: String?, editedAt: Date?, familyID: Int64?,
                 versionNumber: Int?, isVariant: Bool, exportOfID: Int64?, family: [FamilyFile],
                 destinationID: Int64, destinationKey: String, destinationLabel: String, destinationText: String,
                 destinationIdentified: Bool, pastSends: [PastSend], knownOrganisations: [String: Int64],
                 sensitivity: Sensitivity = .balanced, familyMuted: Bool = false, destinationMuted: Bool = false,
-                recentCards: [ShownCard] = [], now: Date = Date()) {
+                recentCards: [ShownCard] = [], now: Date = Date(), askForLabel: Bool = false) {
         self.sendID = sendID; self.fileID = fileID; self.fileName = fileName; self.sha256 = sha256; self.editedAt = editedAt
         self.familyID = familyID; self.versionNumber = versionNumber; self.isVariant = isVariant; self.exportOfID = exportOfID
         self.family = family; self.destinationID = destinationID; self.destinationKey = destinationKey
@@ -121,6 +126,7 @@ public struct WarningInput: Sendable {
         self.destinationIdentified = destinationIdentified; self.pastSends = pastSends
         self.knownOrganisations = knownOrganisations; self.sensitivity = sensitivity; self.familyMuted = familyMuted
         self.destinationMuted = destinationMuted; self.recentCards = recentCards; self.now = now
+        self.askForLabel = askForLabel
     }
 }
 
@@ -157,8 +163,12 @@ public enum WarningEngine {
     static let exportSources: Set<String> = ["docx", "doc", "pages", "key", "pptx", "ppt"]
 
     public static func evaluate(_ input: WarningInput) -> WarningResult {
+        // FR-37: asking for a label is never a warning, so muting doesn't hide it.
+        let ask = input.askForLabel ? [Warning(rule: .unknownDestination)] : []
         // Muting (PRD 8.2): a muted document or destination gets no warnings at all.
-        guard !input.familyMuted, !input.destinationMuted else { return WarningResult(fired: [], card: nil) }
+        guard !input.familyMuted, !input.destinationMuted else {
+            return WarningResult(fired: ask, card: ask.first.flatMap { input.sensitivity.showsCard($0.rule) ? $0 : nil })
+        }
         var fired: [Warning] = []
         if let w4 = nameMismatch(input) { fired.append(w4) }
         if let w1 = olderVersion(input) { fired.append(w1) }
@@ -167,7 +177,16 @@ public enum WarningEngine {
         if let w2 = alreadySent(input) { fired.append(w2) }
         fired.sort { $0.rule.precedence < $1.rule.precedence }
 
+        // FR-37: the label question shows only when no warning fired for this pick; otherwise it stays
+        // in the Ledger and the warning gets the card.
+        if !ask.isEmpty {
+            let card = fired.isEmpty && input.sensitivity.showsCard(.unknownDestination) ? ask[0] : nil
+            fired.append(contentsOf: ask)
+            if card != nil { return WarningResult(fired: fired, card: card) }
+        }
+
         let card = fired.first { warning in
+            guard warning.rule != .unknownDestination else { return false }
             guard input.sensitivity.showsCard(warning.rule) else { return false }
             // The softer check is a card only if the other file changed in the last 7 days (PRD 8.3).
             if warning.rule == .softer {

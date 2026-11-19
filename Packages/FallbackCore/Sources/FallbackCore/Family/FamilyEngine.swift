@@ -217,8 +217,9 @@ public enum FamilyEngine {
         let onlyA = wordsA.subtracting(wordsB), onlyB = wordsB.subtracting(wordsA)
         if !onlyA.isEmpty && !onlyB.isEmpty && !wordsA.isDisjoint(with: wordsB) { return true }
         if !onlyA.union(onlyB).isDisjoint(with: knownOrganisations) { return true }
-        // Went to different destinations within 30 days.
-        for sa in a.sends {
+        // Went to different destinations within 30 days. Only for pairs without a clear order: sending the
+        // older file somewhere new is exactly the mistake W1 catches, so it never makes two versions siblings.
+        for sa in a.sends where newer(a, b) == nil {
             if b.sends.contains(where: { $0.destinationKey != sa.destinationKey && abs($0.at.timeIntervalSince(sa.at)) <= thirtyDays }) {
                 return true
             }

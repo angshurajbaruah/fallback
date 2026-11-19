@@ -243,16 +243,24 @@ struct FamilyEngineTests {
         #expect(FamilyEngine.compare(a, b)!.relation == .variant)
     }
 
-    @Test func sentToDifferentPlacesWithin30Days_isVariant() {
-        let a = file(1, "cv_v1.pdf", text: Fixtures.resume, edited: 0, sends: [SentTo(destinationKey: "lever:emergent", at: start + day)])
-        let b = file(2, "cv_v2.pdf", text: Fixtures.resume, edited: day, sends: [SentTo(destinationKey: "workday:razorpay", at: start + 10 * day)])
+    @Test func unclearPairSentToDifferentPlacesWithin30Days_isVariant() {
+        // Same date, no version numbers: the order is unclear, so the destinations decide.
+        let a = file(1, "cv one.pdf", text: Fixtures.resume, sends: [SentTo(destinationKey: "lever:emergent", at: start + day)])
+        let b = file(2, "cv two.pdf", text: Fixtures.resume, sends: [SentTo(destinationKey: "workday:razorpay", at: start + 10 * day)])
         #expect(FamilyEngine.compare(a, b)!.relation == .variant)
     }
 
-    @Test func sentToDifferentPlaces60DaysApart_staysAVersion() {
-        let a = file(1, "cv_v1.pdf", text: Fixtures.resume, edited: 0, sends: [SentTo(destinationKey: "lever:emergent", at: start + day)])
-        let b = file(2, "cv_v2.pdf", text: Fixtures.resume, edited: day, sends: [SentTo(destinationKey: "workday:razorpay", at: start + 61 * day)])
-        #expect(FamilyEngine.compare(a, b)!.relation == .version)
+    @Test func unclearPairSentToDifferentPlaces60DaysApart_staysUnclear() {
+        let a = file(1, "cv one.pdf", text: Fixtures.resume, sends: [SentTo(destinationKey: "lever:emergent", at: start + day)])
+        let b = file(2, "cv two.pdf", text: Fixtures.resume, sends: [SentTo(destinationKey: "workday:razorpay", at: start + 61 * day)])
+        #expect(FamilyEngine.compare(a, b)!.relation == .unclear)
+    }
+
+    /// v5 went to one company, then v3 to another by mistake: still versions, so W1 can warn.
+    @Test func clearVersionsSentToDifferentPlaces_stayVersions() {
+        let v3 = file(1, "cv_v3.pdf", text: Fixtures.resume, edited: 0, sends: [SentTo(destinationKey: "lever:globex", at: start + 20 * day)])
+        let v5 = file(2, "cv_v5.pdf", text: Fixtures.resume, edited: 13 * day, sends: [SentTo(destinationKey: "lever:northwind", at: start + 19 * day)])
+        #expect(FamilyEngine.compare(v3, v5)!.relation == .version)
     }
 
     @Test func equalDatesWithoutNumbers_areUnclear() {

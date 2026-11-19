@@ -89,9 +89,22 @@ struct DestinationResolverTests {
         #expect(found == Destination(key: "page:acme", label: "Acme", source: .fallback))
     }
 
+    @Test func browserWithoutAddressIsUnknown_perWindow() {
+        let upload = resolver.resolve(url: nil, title: "Upload - Google Chrome – Anshu", appBundleID: "com.google.Chrome", appName: "Google Chrome")
+        #expect(upload == Destination(key: "window:com.google.Chrome:upload", label: "Unlabelled", source: .fallback))
+        #expect(DestinationResolver.isUnknown(key: upload.key))
+        let other = resolver.resolve(url: nil, title: "Attach files — Mozilla Firefox", appBundleID: "org.mozilla.firefox", appName: "Firefox")
+        #expect(other.key == "window:org.mozilla.firefox:attach files")
+    }
+
+    @Test func nativeAppsAreNeverUnknown() {
+        let mail = resolver.resolve(url: nil, title: "New Message", appBundleID: "com.apple.mail", appName: "Mail")
+        #expect(!DestinationResolver.isUnknown(key: mail.key))
+    }
+
     @Test func localPageWithoutTitleUsesAppName() {
         let found = resolver.resolve(url: "file:///Users/me/upload-test.html", title: "",
-                                     appBundleID: "com.google.Chrome", appName: "Google Chrome")
-        #expect(found.key == "app:com.google.Chrome")
+                                     appBundleID: "com.apple.mail", appName: "Mail")
+        #expect(found.key == "app:com.apple.mail")
     }
 }

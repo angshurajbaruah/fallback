@@ -10,7 +10,7 @@ extension Store {
         try db.read { db in
             guard let send = try Row.fetchOne(db, sql: """
                 SELECT s.id, s.file_id, s.file_name_at_send, s.sha256, s.url, s.page_title, s.confidence,
-                       d.id, d.key, d.label, d.muted,
+                       d.id, d.key, d.label, d.muted, d.label_source, d.label_asked,
                        f.doc_modified_at, f.modified_at, f.family_id, f.version_number, f.is_variant, f.export_of_id,
                        fam.muted
                 FROM sends s JOIN destinations d ON d.id = s.destination_id
@@ -18,7 +18,7 @@ extension Store {
                 WHERE s.id = ?
                 """, arguments: [sendID]) else { return nil }
             let fileID: Int64? = send[1]
-            let familyID: Int64? = send[13]
+            let familyID: Int64? = send[15]
             let key: String = send[8]
             let url: String? = send[4]
 
@@ -67,16 +67,17 @@ extension Store {
             let sensitivity = try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = 'sensitivity'")
                 .flatMap(Sensitivity.init(rawValue:)) ?? .balanced
             let host = url.flatMap { URL(string: $0)?.host() } ?? ""
-            let identified = !Self.serviceDestinations.contains(key) && !key.hasPrefix("app:")
+            let identified = !Self.serviceDestinations.contains(key) && !key.hasPrefix("app:") && !DestinationResolver.isUnknown(key: key)
                 && (send[6] as String) != Confidence.low.rawValue
 
             return WarningInput(sendID: sendID, fileID: fileID, fileName: send[2], sha256: send[3],
-                                editedAt: send[11] ?? send[12], familyID: familyID, versionNumber: send[14],
-                                isVariant: send[15] ?? false, exportOfID: send[16], family: family,
+                                editedAt: send[13] ?? send[14], familyID: familyID, versionNumber: send[16],
+                                isVariant: send[17] ?? false, exportOfID: send[18], family: family,
                                 destinationID: send[7], destinationKey: key, destinationLabel: send[9],
                                 destinationText: "\(host) \(send[5] as String? ?? "")", destinationIdentified: identified,
                                 pastSends: pastSends, knownOrganisations: known, sensitivity: sensitivity,
-                                familyMuted: send[17] ?? false, destinationMuted: send[10], recentCards: recent, now: now)
+                                familyMuted: send[19] ?? false, destinationMuted: send[10], recentCards: recent, now: now,
+                                askForLabel: DestinationResolver.isUnknown(key: key) && (send[11] as String) != "user" && !(send[12] as Bool))
         }
     }
 
@@ -115,6 +116,11 @@ extension Store {
 
     public func muteDestination(_ id: Int64, _ muted: Bool = true) throws {
         try db.write { try $0.execute(sql: "UPDATE destinations SET muted = ? WHERE id = ?", arguments: [muted, id]) }
+    }
+
+    /// FR-37: this destination has been asked about; don't ask again, whatever the answer.
+    public func markLabelAsked(destination id: Int64) throws {
+        try db.write { try $0.execute(sql: "UPDATE destinations SET label_asked = 1 WHERE id = ?", arguments: [id]) }
     }
 
     /// The family and file of a send, for save detection.

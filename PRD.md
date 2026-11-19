@@ -289,6 +289,7 @@ Priority: **P0** = must ship in v1.0. **P1** = should ship in v1.0, can slip to 
 | FR-25 | Card actions: primary fix, Send anyway, Don't warn for this document or destination | P0 | Choices remembered |
 | FR-26 | Card never takes keyboard focus and never covers the centre of the screen | P0 | Typing in the browser isn't interrupted |
 | FR-27 | Record what happened after each warning and detect a "save" (a different file from the same family picked within 2 minutes) | P0 | Saves counted in Stats |
+| FR-37 | "Recorded, destination unknown": when the destination genuinely couldn't be resolved at all (a browser gave no page address, so only a window title is known; not merely Medium confidence), ask the user to label it. Neutral card, not a warning: no Tangerine. Shown in Strict and Balanced, Ledger-only in Quiet. Never takes precedence over a warning: if any warning fires for the same pick, the warning gets the card and this stays in the Ledger. Actions: Add a label (saved as a label rule, FR-13), Not a send | P1 | Asked at most once per unknown destination, ever (see 8.2). The label field takes typing only after the user clicks it (FR-26) |
 
 ### 7.5 App shell and settings
 
@@ -325,6 +326,7 @@ Priority: **P0** = must ship in v1.0. **P1** = should ship in v1.0, can slip to 
   - *Quiet* shows only W4 and W1.
 - **Muting:** "Don't warn for this document" mutes that family for every rule. "Don't warn for this destination" mutes that destination. Both can be undone in Settings.
 - **Cool-down:** the same rule for the same family won't show twice within 10 minutes.
+- **Label requests (FR-37):** Fallback asks for a destination label at most once per unknown destination, ever. Once a label rule is saved (FR-13), it never asks about that place again; if the user dismisses the card without labelling, it doesn't ask again either.
 - **Precision target:** in the owner's own two-week trial, under 1 false-alarm card per day. If a rule misses that, it gets tightened before launch.
 
 ### 8.3 Grouping files into document families

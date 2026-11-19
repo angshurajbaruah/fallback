@@ -247,6 +247,7 @@ final class AppModel {
 
     struct ActiveCard {
         var warningID: Int64
+        var sendID: Int64
         var warning: Warning
         var familyID: Int64?
         var destinationID: Int64
@@ -290,18 +291,37 @@ final class AppModel {
 
     private func showCard(_ warning: Warning, input: WarningInput, warningID: Int64, more: Int, appName: String) {
         let content = WarningCardContent(warning, input: input, moreChecks: more, appName: shortAppName(appName))
-        activeCard = ActiveCard(warningID: warningID, warning: warning, familyID: input.familyID, destinationID: input.destinationID)
+        activeCard = ActiveCard(warningID: warningID, sendID: input.sendID, warning: warning, familyID: input.familyID,
+                                destinationID: input.destinationID)
+        // FR-37: asked once per place, ever, whatever the answer.
+        if warning.rule == .unknownDestination { try? store.markLabelAsked(destination: input.destinationID) }
         lastCard = (warningID, input.familyID, input.fileID, Date())
         presenter.show(WarningCardView(
             content: content,
             onPrimary: { [weak self] in self?.cardPrimary() },
+            onLabel: { [weak self] label in self?.labelUnknown(label) },
             onSecondary: { [weak self] in
+                if warning.rule == .unknownDestination { self?.notASendFromCard(); return }
                 self?.closeCard("sent_anyway", detail: warning.rule == .softer ? "Said it's the right one" : "Sent anyway")
             },
             onMute: { [weak self] in self?.cardMute() },
             onMore: { [weak self] in self?.openLedger(.warnings); self?.closeCard(nil, detail: nil) },
             onClose: { [weak self] in self?.closeCard("dismissed", detail: "Closed the card") },
-            onTimeout: { [weak self] in self?.closeCard("dismissed", detail: "Card timed out") }))
+            onTimeout: { [weak self] in self?.closeCard("dismissed", detail: "Card timed out") }),
+            acceptsTyping: warning.rule == .unknownDestination)
+    }
+
+    /// FR-37 "Add a label": saved as a label rule (FR-13), so this place is named from now on.
+    private func labelUnknown(_ label: String) {
+        guard let card = activeCard else { return }
+        try? store.renameDestination(ofSend: card.sendID, to: label, includingOthers: true)
+        closeCard("labelled", detail: "Labelled “\(label)”")
+    }
+
+    private func notASendFromCard() {
+        guard let card = activeCard else { return }
+        try? store.markNotASend(id: card.sendID)
+        closeCard("not_a_send", detail: "Marked not a send")
     }
 
     /// The fix: show the newer file, the previous send, what they have, or the source document.
@@ -319,6 +339,8 @@ final class AppModel {
         case .w4:
             let id = card.warning.tokenDestinationID.flatMap { $0 == 0 ? nil : $0 }
             openLedger(.byDestination(selected: id))
+        case .unknownDestination:
+            return // handled by onLabel
         }
         closeCard(nil, detail: nil) // the outcome becomes "Saved" if they pick another version in time
     }

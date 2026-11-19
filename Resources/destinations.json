@@ -14,6 +14,10 @@
     { "id": "slack", "bundleIDs": ["com.tinyspeck.slackmacgap"], "title": "^(?<label>.+?) \\((Channel|Private channel)\\) - (?<scope>.+?) - Slack$", "labelPrefix": "#" },
     { "id": "slack", "bundleIDs": ["com.tinyspeck.slackmacgap"], "title": "^(?<label>.+?) \\((DM|Group DM)\\) - (?<scope>.+?) - Slack$" }
   ],
+  "browsers": [
+    "com.apple.Safari", "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.canary", "com.brave.Browser",
+    "com.microsoft.edgemac", "company.thebrowser.Browser", "com.vivaldi.Vivaldi", "org.mozilla.firefox"
+  ],
   "multiPartSuffixes": [
     "co.in", "net.in", "org.in", "ac.in", "gov.in", "co.uk", "org.uk", "ac.uk", "gov.uk",
     "com.au", "net.au", "org.au", "co.nz", "co.jp", "co.za", "com.br", "com.sg", "com.my", "com.mx", "com.cn", "com.hk", "co.kr"

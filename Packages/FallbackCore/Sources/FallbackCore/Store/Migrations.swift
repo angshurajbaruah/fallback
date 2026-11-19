@@ -144,5 +144,10 @@ enum Migrations {
             CREATE INDEX warnings_send ON warnings(send_id);
             """)
         }
+
+        // FR-37: ask for a label at most once per unknown destination, ever.
+        migrator.registerMigration("v5") { db in
+            try db.execute(sql: "ALTER TABLE destinations ADD COLUMN label_asked BOOLEAN NOT NULL DEFAULT 0")
+        }
     }
 }

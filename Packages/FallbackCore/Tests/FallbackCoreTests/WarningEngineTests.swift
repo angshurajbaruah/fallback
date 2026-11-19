@@ -196,6 +196,53 @@ struct WarningEngineTests {
         #expect(result.fired.isEmpty)
     }
 
+    // MARK: FR-37 destination unknown
+
+    func unknown(_ name: String, sensitivity: Sensitivity = .balanced, ask: Bool = true, muted: Bool = false) -> WarningInput {
+        var value = input(name, to: ("window:com.google.Chrome:upload", "Unlabelled", " Upload"), identified: false,
+                          sensitivity: sensitivity, familyMuted: muted)
+        value.askForLabel = ask
+        return value
+    }
+
+    @Test func unknown_asksWhenNothingElseFires() {
+        let result = WarningEngine.evaluate(unknown("resume_v5.pdf"))
+        #expect(result.card?.rule == .unknownDestination)
+        #expect(!WarningRule.unknownDestination.isWarning) // neutral, never Tangerine
+    }
+
+    @Test func unknown_neverAboveARealWarning() {
+        let result = WarningEngine.evaluate(unknown("resume_v3.pdf"))
+        #expect(result.card?.rule == .w1)
+        #expect(result.fired.last?.rule == .unknownDestination) // kept for the Ledger
+    }
+
+    @Test func unknown_staysInTheLedgerWhenAWarningFiresButIsLedgerOnly() {
+        var value = unknown("resume_v5.pdf")
+        value.pastSends = [past("resume_v5.pdf", to: "window:com.google.Chrome:upload", file: 3)]
+        let result = WarningEngine.evaluate(value) // W2 fires, Ledger-only in Balanced
+        #expect(result.fired.map(\.rule) == [.w2, .unknownDestination])
+        #expect(result.card == nil)
+    }
+
+    @Test func unknown_isLedgerOnlyInQuiet() {
+        let result = WarningEngine.evaluate(unknown("resume_v5.pdf", sensitivity: .quiet))
+        #expect(result.fired.map(\.rule) == [.unknownDestination] && result.card == nil)
+    }
+
+    @Test func unknown_showsInStrict() {
+        #expect(WarningEngine.evaluate(unknown("resume_v5.pdf", sensitivity: .strict)).card?.rule == .unknownDestination)
+    }
+
+    @Test func unknown_notAskedTwice() {
+        #expect(WarningEngine.evaluate(unknown("resume_v5.pdf", ask: false)).fired.isEmpty)
+    }
+
+    @Test func unknown_stillAskedForAMutedDocument() {
+        // Muting silences warnings; the label question isn't one.
+        #expect(WarningEngine.evaluate(unknown("resume_v3.pdf", muted: true)).card?.rule == .unknownDestination)
+    }
+
     // MARK: FR-27 saves
 
     @Test func save_differentFileSameDocumentWithin2Minutes() {
@@ -295,5 +342,35 @@ struct WarningStoreTests {
                                               url: nil, pageTitle: "New Message", method: .axPanel),
                                       destination: Destination(key: "app:com.apple.mail", label: "Mail", source: .fallback), facts: nil)
         #expect(try store.warningInput(forSend: sendID)?.destinationIdentified == false)
+    }
+}
+
+
+/// FR-37 through the database: asked once per place, never again after a label or a dismissal.
+struct UnknownDestinationStoreTests {
+    func send(_ store: Store, title: String) throws -> Int64 {
+        try store.record(NewSend(path: nil, fileName: "Budget_Q4.xlsx", appBundleID: "org.mozilla.firefox", appName: "Firefox",
+                                 url: nil, pageTitle: title, method: .axPanel),
+                         destination: Destination(key: "window:org.mozilla.firefox:\(title.lowercased())", label: "Unlabelled", source: .fallback),
+                         facts: nil)
+    }
+
+    @Test func askedOnceThenNeverAgain() throws {
+        let store = try Store.inMemory()
+        let first = try send(store, title: "Upload")
+        let input = try #require(try store.warningInput(forSend: first))
+        #expect(input.askForLabel && !input.destinationIdentified)
+        try store.markLabelAsked(destination: input.destinationID) // the card was shown (then dismissed)
+        #expect(try store.warningInput(forSend: send(store, title: "Upload"))?.askForLabel == false)
+        // A different unknown place is still asked about.
+        #expect(try store.warningInput(forSend: send(store, title: "Attach files"))?.askForLabel == true)
+    }
+
+    @Test func labelledPlacesAreNeverAsked() throws {
+        let store = try Store.inMemory()
+        let first = try send(store, title: "Upload")
+        try store.renameDestination(ofSend: first, to: "Acme finance", includingOthers: true) // FR-13 label rule
+        #expect(try store.warningInput(forSend: send(store, title: "Upload"))?.askForLabel == false)
+        #expect(try store.sends().first?.destinationLabel == "Acme finance")
     }
 }
