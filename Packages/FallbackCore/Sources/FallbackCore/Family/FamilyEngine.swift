@@ -213,7 +213,7 @@ public enum FamilyEngine {
 
     static func isVariant(_ a: FileEvidence, _ b: FileEvidence, knownOrganisations: Set<String>) -> Bool {
         // Names carry different organisation names: Resume_Razorpay vs Resume_Emergent.
-        let wordsA = Set(NameStem.tokens(a.name).filter(isNameWord)), wordsB = Set(NameStem.tokens(b.name).filter(isNameWord))
+        let wordsA = nameWords(a.name), wordsB = nameWords(b.name)
         let onlyA = wordsA.subtracting(wordsB), onlyB = wordsB.subtracting(wordsA)
         if !onlyA.isEmpty && !onlyB.isEmpty && !wordsA.isDisjoint(with: wordsB) { return true }
         if !onlyA.union(onlyB).isDisjoint(with: knownOrganisations) { return true }
@@ -233,6 +233,9 @@ public enum FamilyEngine {
     private static func isNameWord(_ word: String) -> Bool {
         word.count >= 3 && word.allSatisfy(\.isLetter) && !NameStem.filler.contains(word) && !NameStem.generic.contains(word)
     }
+
+    /// The meaningful words of a file name ("Anshuraj_Baruah_Zinier_Resume.pdf" → anshuraj, baruah, zinier, resume).
+    public static func nameWords(_ name: String) -> Set<String> { Set(NameStem.tokens(name).filter(isNameWord)) }
 
     /// The newer of the two when the order is clear, else nil. Dates decide; an explicit version number
     /// in the names (v3 < v5) breaks a tie only when the dates are equal.
@@ -274,11 +277,24 @@ public enum FamilyEngine {
         let base = counts.max { $0.value == $1.value ? $0.key.count > $1.key.count : $0.value < $1.value }?.key
         let baseWords = Set(base.map { NameStem.tokens($0) } ?? [])
         // Tailored copies: same base name plus extra words (Resume_Razorpay against Resume).
-        let variants = Set(files.filter { file in
+        let baseVariants = Set(files.filter { file in
             guard let stem = file.stem, stem != base, !baseWords.isEmpty else { return false }
             let words = Set(NameStem.tokens(stem))
             return words.isSuperset(of: baseWords) && words.subtracting(baseWords).contains(where: isNameWord)
         }.map(\.id))
+        // Files the pairwise links already call variants (relation()) are variants too, so the family view and
+        // the warnings agree. This catches tailored copies with no plain base file (Resume_Zinier, Resume_Razorpay,
+        // Resume_Origin…), which the base-name rule above misses. The plain base itself (Resume against
+        // Resume_Razorpay) stays on the main line.
+        let byIDForLinks = Dictionary(uniqueKeysWithValues: files.map { ($0.id, $0) })
+        let linked = Set(files.filter { file in
+            let partners = links.filter { $0.relation == .variant && ($0.a == file.id || $0.b == file.id) }
+                .compactMap { byIDForLinks[$0.a == file.id ? $0.b : $0.a] }
+            guard !partners.isEmpty else { return false }
+            let mine = nameWords(file.name)
+            return !partners.allSatisfy { mine.isSubset(of: nameWords($0.name)) }
+        }.map(\.id))
+        let variants = baseVariants.union(linked)
         let ordered = ordered(files)
         // Versions are numbered within each format, so an export pair (Proposal.docx + Proposal.pdf)
         // is two v1s, not "v1 and its newer v2" (PRD 8.3: exports are never newer or older versions).
@@ -295,7 +311,13 @@ public enum FamilyEngine {
             guard let a = byID[link.a], let b = byID[link.b] else { continue }
             if a.ext == "pdf" { exportOf[a.id] = b.id } else { exportOf[b.id] = a.id }
         }
-        let name = base.map(titleCased) ?? files.first.map { ($0.name as NSString).deletingPathExtension } ?? "Document"
+        var name = base.map(titleCased) ?? files.first.map { ($0.name as NSString).deletingPathExtension } ?? "Document"
+        // Only tailored copies: name the family by the words they share ("Anshuraj Baruah Resume"), not after one company.
+        if files.count > 1, files.allSatisfy({ variants.contains($0.id) }), let base {
+            let shared = files.map { nameWords($0.name) }.reduce(nameWords(files[0].name)) { $0.intersection($1) }
+            let words = NameStem.tokens(base).filter(shared.contains)
+            if !words.isEmpty { name = titleCased(words.joined(separator: " ")) }
+        }
         return FamilyGroup(members: ordered.map(\.id), name: name, versions: versions, exportOf: exportOf, variants: variants,
                            confidence: links.map(\.confidence).max() ?? (files.count > 1 ? .high : .low),
                            signals: Set(links.filter { $0.confidence == .high }.flatMap(\.signals)),

@@ -85,6 +85,26 @@ struct WarningEngineTests {
         #expect(result.card == nil) // changed more than 7 days ago
     }
 
+    @Test func softer_notBetweenVariantsForDifferentCompanies() {
+        let members = [FamilyFile(id: 2, name: "Anshuraj_Baruah_Razorpay_Resume.pdf", editedAt: date(1), isVariant: true, relationToPicked: .variant),
+                       FamilyFile(id: 3, name: "Anshuraj_Baruah_TwinCafe_Resume.pdf", editedAt: date(0.5), isVariant: true, relationToPicked: .variant)]
+        let result = WarningEngine.evaluate(input("Anshuraj_Baruah_Zinier_Resume.pdf", edited: date(10), version: nil, variant: true, members: members))
+        #expect(!result.fired.contains { $0.rule == .softer || $0.rule == .w1 })
+    }
+
+    @Test func softer_stillBetweenAVariantAndItsMainLine() {
+        let members = [FamilyFile(id: 2, name: "Resume.pdf", editedAt: date(1), versionNumber: 1, relationToPicked: .variant)]
+        let result = WarningEngine.evaluate(input("Resume_Razorpay.pdf", edited: date(10), version: nil, variant: true, members: members))
+        #expect(result.card?.rule == .softer)
+        #expect(result.card?.otherFile?.name == "Resume.pdf")
+    }
+
+    @Test func softer_draftAndFinalAreNotOrganisations() {
+        let members = [FamilyFile(id: 2, name: "Proposal_draft.pdf", editedAt: date(1), relationToPicked: .unclear)]
+        let result = WarningEngine.evaluate(input("Proposal_final.pdf", edited: date(10), version: 1, members: members))
+        #expect(result.card?.rule == .softer)
+    }
+
     // MARK: W2
 
     @Test func w2_sameFileSameDestinationTwice() {

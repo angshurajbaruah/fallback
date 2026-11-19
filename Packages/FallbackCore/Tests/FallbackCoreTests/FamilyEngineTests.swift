@@ -380,6 +380,34 @@ struct FamilyEngineTests {
         #expect(v3v5?.relation == .version)
     }
 
+    /// Live bug: four tailored resumes, ~90% the same text, each naming a different company and no plain
+    /// base file. relation() called every pair a variant, but describe() numbered them v1…v4.
+    func tailoredResumes() -> [FileEvidence] {
+        [file(1, "Anshuraj_Baruah_Zinier_Resume.pdf", text: Fixtures.resume, edited: 0),
+         file(2, "Anshuraj_Baruah_Razorpay_Resume.pdf", text: Fixtures.resumeEdited, edited: day),
+         file(3, "Anshuraj_Baruah_Origin_Resume.pdf", text: Fixtures.resume, edited: 2 * day),
+         file(4, "Anshuraj_Baruah_TwinCafe_Resume.pdf", text: Fixtures.resumeEdited, edited: 3 * day)]
+    }
+
+    @Test func tailoredCopiesWithoutABase_areAllVariants_noVersionNumbers() {
+        let result = FamilyEngine.build(files: tailoredResumes())
+        let group = try! #require(result.groups.first)
+        #expect(result.groups.count == 1 && group.members.count == 4)
+        #expect(group.variants == [1, 2, 3, 4])
+        #expect(group.versions.isEmpty)
+        #expect(group.newest == nil)
+        #expect(group.name == "Anshuraj Baruah Resume") // not named after one company
+        for link in result.links { #expect(link.relation == .variant, "\(link.a)–\(link.b) was \(link.relation)") }
+    }
+
+    @Test func tailoredCopiesWithAPlainBase_baseStaysOnTheMainLine() {
+        let files = tailoredResumes() + [file(5, "Anshuraj_Baruah_Resume.pdf", text: Fixtures.resume, edited: 4 * day)]
+        let group = FamilyEngine.build(files: files).groups.first!
+        #expect(group.variants == [1, 2, 3, 4])
+        #expect(group.versions == [5: 1])
+        #expect(group.newest == 5)
+    }
+
     @Test func singleFileIsItsOwnFamily() {
         let result = FamilyEngine.build(files: [file(1, "Invoice_Nov_Acme.pdf")])
         #expect(result.groups.count == 1 && result.groups[0].versions == [1: 1])

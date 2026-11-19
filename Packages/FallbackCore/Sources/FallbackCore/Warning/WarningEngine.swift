@@ -297,9 +297,19 @@ public enum WarningEngine {
         let mineEdited = input.editedAt ?? .distantPast
         let other = sameFormat
             .filter { [.variant, .unclear].contains($0.relationToPicked) || (input.isVariant && $0.relationToPicked == .version) }
+            // Two copies tailored for different organisations aren't rivals: a Razorpay resume isn't an
+            // outdated Zinier one. A variant against its own main line (Resume_Razorpay vs Resume) still counts.
+            .filter { !tailoredForDifferentOrganisations(input.fileName, $0.name) }
             .filter { ($0.editedAt ?? .distantPast) > mineEdited.addingTimeInterval(tolerance) }
             .max { ($0.editedAt ?? .distantPast) < ($1.editedAt ?? .distantPast) }
         return other.map { Warning(rule: .softer, otherFile: $0) }
+    }
+
+    /// Each name carries a word the other lacks (ignoring common words like "final" or "draft") and
+    /// they share the rest: Resume_Razorpay and Resume_Zinier, but not Resume and Resume_Razorpay.
+    static func tailoredForDifferentOrganisations(_ a: String, _ b: String) -> Bool {
+        let wordsA = FamilyEngine.nameWords(a).subtracting(commonWords), wordsB = FamilyEngine.nameWords(b).subtracting(commonWords)
+        return !wordsA.subtracting(wordsB).isEmpty && !wordsB.subtracting(wordsA).isEmpty && !wordsA.isDisjoint(with: wordsB)
     }
 
     // MARK: W2 Already sent
