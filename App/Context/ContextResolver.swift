@@ -9,6 +9,9 @@ struct PanelContext: Sendable {
     var tabTitle: String?
     /// Why the tab address is missing, for the debug log.
     var note: String?
+    /// P-1: addresses in the email's To field, when this is a compose window. Not stored.
+    var recipients: [String] = []
+    var recipientNote: String?
 
     /// The title that best describes the page: the tab title for browsers, else the window title.
     var pageTitle: String? { tabTitle ?? windowTitle }
@@ -27,6 +30,7 @@ enum ContextResolver {
                                    windowTitle: window?.string(kAXTitleAttribute).flatMap { $0.isEmpty ? nil : $0 })
         guard let script = tabScript(for: bundleID) else {
             context.note = "no tab address for this app, window title only"
+            readRecipients(&context, window: window, host: host)
             return context
         }
         var error: NSDictionary?
@@ -38,7 +42,15 @@ enum ContextResolver {
             let waiting = AppModel.browserAccess(bundleID) == .notAsked ? " (macOS hasn't been told yet whether Fallback may control it)" : ""
             context.note = "✗ couldn't read the tab (Apple Events): \(describe(error))\(waiting)"
         }
+        readRecipients(&context, window: window, host: host)
         return context
+    }
+
+    private static func readRecipients(_ context: inout PanelContext, window: AXUIElement?, host: NSRunningApplication) {
+        guard RecipientReader.applies(bundleID: context.bundleID, url: context.url) else { return }
+        let found = RecipientReader.read(window: window, app: host)
+        context.recipients = found.addresses
+        context.recipientNote = found.note
     }
 
     private static func tabScript(for bundleID: String) -> String? {

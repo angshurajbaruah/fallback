@@ -18,6 +18,11 @@
     "com.apple.Safari", "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.canary", "com.brave.Browser",
     "com.microsoft.edgemac", "company.thebrowser.Browser", "com.vivaldi.Vivaldi", "org.mozilla.firefox"
   ],
+  "personalMailDomains": [
+    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "msn.com", "yahoo.com", "yahoo.co.in",
+    "ymail.com", "icloud.com", "me.com", "mac.com", "aol.com", "proton.me", "protonmail.com", "pm.me", "zoho.com",
+    "zohomail.in", "rediffmail.com", "gmx.com", "gmx.net", "mail.com", "yandex.com", "hey.com", "fastmail.com"
+  ],
   "multiPartSuffixes": [
     "co.in", "net.in", "org.in", "ac.in", "gov.in", "co.uk", "org.uk", "ac.uk", "gov.uk",
     "com.au", "net.au", "org.au", "co.nz", "co.jp", "co.za", "com.br", "com.sg", "com.my", "com.mx", "com.cn", "com.hk", "co.kr"

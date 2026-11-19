@@ -182,6 +182,7 @@ final class PanelWatcher {
         log.add("CONTEXT", "window title “\(context.windowTitle ?? "—")”")
         if let url = context.url { log.add("CONTEXT", "tab \(url)  “\(context.tabTitle ?? "")” (Apple Events)") }
         if let note = context.note { log.add("CONTEXT", note) }
+        if let note = context.recipientNote { log.add("CONTEXT", note) }
         log.add("LISTS", PanelReader.describe(element))
         panel.picks = PanelReader.picks(in: element)
         tracked = panel

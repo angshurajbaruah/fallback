@@ -107,4 +107,31 @@ struct DestinationResolverTests {
                                      appBundleID: "com.apple.mail", appName: "Mail")
         #expect(found.key == "app:com.apple.mail")
     }
+
+    // MARK: P-1, the email recipient as the destination
+
+    @Test func companyRecipientBecomesTheDestination() {
+        let found = resolver.resolve(recipients: ["careers@palmonas.com"])
+        #expect(found == Destination(key: "email:palmonas.com", label: "Palmonas", source: .rule))
+    }
+
+    @Test func recipientSubdomainsAndCountrySuffixesUseTheMainDomain() {
+        #expect(resolver.resolve(recipients: ["hr@careers.acme.co.in"])?.key == "email:acme.co.in")
+        #expect(resolver.resolve(recipients: ["a@acme.com", "B@Mail.Acme.com"])?.label == "Acme")
+    }
+
+    @Test(arguments: ["friend@gmail.com", "me@icloud.com", "x@yahoo.co.in", "p@proton.me"])
+    func personalAddressesStayUnidentified(address: String) {
+        #expect(resolver.resolve(recipients: [address]) == nil)
+    }
+
+    @Test func recipientsAtDifferentCompaniesNeverGuess() {
+        #expect(resolver.resolve(recipients: ["a@acme.com", "b@globex.com"]) == nil)
+        #expect(resolver.resolve(recipients: ["a@acme.com", "friend@gmail.com"]) == nil)
+    }
+
+    @Test func nothingReadableKeepsTodaysBehaviour() {
+        #expect(resolver.resolve(recipients: []) == nil)
+        #expect(resolver.resolve(recipients: ["Meera Iyer", "not-an-address@", "@acme.com"]) == nil)
+    }
 }

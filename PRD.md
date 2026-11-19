@@ -356,9 +356,11 @@ A family is **the same document across its versions, whatever the files are call
 | **Export** | A PDF and the .docx, .pages, .key or .pptx it came from | Used by W5 only |
 | **Unclear** | None of the above fit | Softer check (below) instead of W1 |
 
+A file whose pairwise links call it a sibling variant is a variant in the family view too, and gets no version number. The one exception is the plain base name (Resume against Resume\_Razorpay), which stays on the main line. So a family of only tailored copies (Resume\_Zinier, Resume\_Razorpay, Resume\_Origin, with no plain Resume) has no version numbers at all, and is named by the words its files share. *(Fixed 20 Nov 2026: such families were numbered v1, v2… because only the "base name plus one extra word" rule was used.)*
+
 **Which is newer:** the document's internal modified date when it has one, otherwise the file's modified date. For downloads, the download order from the same source.
 
-**The softer check ("Another version exists").** When the picked file has a sibling or an unclear relative that was changed more recently, Fallback doesn't say "older". It says: "There's another version of this document ({other}, edited {when}). Check you've picked the right one." It shows as a card only if that other file changed in the last 7 days. Otherwise it appears in the Ledger only.
+**The softer check ("Another version exists").** When the picked file has a sibling or an unclear relative that was changed more recently, Fallback doesn't say "older". It says: "There's another version of this document ({other}, edited {when}). Check you've picked the right one." It shows as a card only if that other file changed in the last 7 days. Otherwise it appears in the Ledger only. It never fires between two copies tailored for different organisations (Resume\_Razorpay against Resume\_Zinier: each name has a word the other lacks, ignoring common words like final or draft), because neither is an outdated version of the other. It still fires between a tailored copy and its own main line (Resume\_Razorpay against Resume).
 
 **Privacy and limits.**
 
@@ -907,6 +909,13 @@ Written up after a real test on 19 Nov 2026: Anshuraj_Baruah_Cover_Letter_Zamp.p
 - Even with the address, the destination would have been "Gmail", which W4 treats as unidentified (8.4 step 4), and "Zamp" wasn't a known organisation (8.4 step 1). So W4 couldn't fire twice over.
 
 #### P-1: the email recipient's domain becomes the destination (extends FR-8)
+
+**Status (20 Nov 2026): built, awaiting a live check in Gmail and Mail.** As built:
+- **Where it works:** Mail and Outlook (the apps), and Gmail or Outlook in a browser.
+- **How it reads:** it looks for the To field by its label ("To:", "To recipients", "To") and reads addresses only inside that field and its row.
+- **What's kept:** only the company domain is kept, as a destination keyed `email:{domain}`. The addresses themselves are never stored.
+- **When it can't read the field,** or the To field shows a contact name without an address, the destination stays as before ("Gmail", "Mail").
+- **Not covered:** WhatsApp Web, which has phone numbers or contact names, not company domains.
 
 **What.** When a file is attached in a Gmail, Outlook or Mail compose window, read the To field (FR-8). If every recipient is at the same company domain, that domain becomes the destination, resolved like a website (careers@palmonas.com becomes Palmonas, via the public suffix list), with High confidence. W4 then works for email exactly as it does for careers pages.
 

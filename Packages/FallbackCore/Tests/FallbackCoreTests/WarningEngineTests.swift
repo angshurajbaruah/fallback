@@ -411,6 +411,21 @@ struct WarningStoreTests {
                             "W3": "Not shown on Quiet", "W2": "Muted for this destination"])
     }
 
+    /// P-1: a Gmail draft to careers@palmonas.com is an identified destination, so W4 can fire from email.
+    @Test func emailRecipientIsIdentified_andW4Fires() throws {
+        let store = try Store.inMemory()
+        _ = try store.record(NewSend(path: nil, fileName: "notes.pdf", appBundleID: "com.google.Chrome", appName: "Chrome",
+                                     url: "https://boards.greenhouse.io/zamp", pageTitle: "Apply", method: .axPanel),
+                             destination: Destination(key: "greenhouse:zamp", label: "Zamp", source: .rule), facts: nil)
+        let sendID = try store.record(NewSend(path: "/t/Anshuraj_Baruah_Cover_Letter_Zamp.pdf", fileName: "Anshuraj_Baruah_Cover_Letter_Zamp.pdf", appBundleID: "com.google.Chrome",
+                                              appName: "Chrome", url: "https://mail.google.com/mail/u/0/#inbox?compose=new",
+                                              pageTitle: "Inbox - Gmail", method: .axPanel),
+                                      destination: Destination(key: "email:palmonas.com", label: "Palmonas", source: .rule), facts: nil)
+        let input = try #require(try store.warningInput(forSend: sendID))
+        #expect(input.destinationIdentified)
+        #expect(WarningEngine.evaluate(input).fired.first?.rule == .w4)
+    }
+
     @Test func mailIsNotAnIdentifiedRecipient() throws {
         let store = try Store.inMemory()
         let sendID = try store.record(NewSend(path: nil, fileName: "Proposal_Acme.pdf", appBundleID: "com.apple.mail", appName: "Mail",

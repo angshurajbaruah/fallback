@@ -222,8 +222,9 @@ final class AppModel {
             log.add("PAUSED", "not recorded: Fallback is paused")
             return
         }
-        let destination = resolver.resolve(url: context.url, title: context.pageTitle,
-                                           appBundleID: context.bundleID, appName: context.appName)
+        // P-1: an email's recipient company wins over "Gmail" or "Mail"; otherwise as before.
+        let destination = resolver.resolve(recipients: context.recipients)
+            ?? resolver.resolve(url: context.url, title: context.pageTitle, appBundleID: context.bundleID, appName: context.appName)
         let store = store
         let sentAt = Date()
         let indexer = indexer

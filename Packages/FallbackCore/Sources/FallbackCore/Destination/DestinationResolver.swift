@@ -20,6 +20,8 @@ public struct DestinationResolver: Sendable {
         var multiPartSuffixes: [String]
         /// Browsers: a send from one of these without a usable page address is a genuinely unknown destination.
         var browsers: [String]?
+        /// P-1: addresses at these domains are people, not companies (gmail.com, icloud.com…).
+        var personalMailDomains: [String]?
     }
 
     /// Regexes may capture `(?<label>…)`; a rule applies when every regex it has matches, except
@@ -64,6 +66,19 @@ public struct DestinationResolver: Sendable {
             return Destination(key: "window:\(appBundleID):\(window.lowercased())", label: "Unlabelled", source: .fallback)
         }
         return Destination(key: "app:\(appBundleID)", label: appName, source: .fallback)
+    }
+
+    /// PRD 16.4 P-1 (extends FR-8): an email's To recipients become the destination when they're all at
+    /// one company: careers@palmonas.com → Palmonas. nil (keep today's behaviour) for a personal address
+    /// (gmail.com…), recipients at different companies, or nothing readable. Only the domain is kept.
+    public func resolve(recipients: [String]) -> Destination? {
+        let domains = Set(recipients.compactMap { address -> String? in
+            let parts = address.lowercased().trimmingCharacters(in: .whitespaces).split(separator: "@")
+            guard parts.count == 2, !parts[0].isEmpty, parts[1].contains("."), !parts[1].hasSuffix(".") else { return nil }
+            return mainDomain(String(parts[1]))
+        })
+        guard domains.count == 1, let main = domains.first, !(rules.personalMailDomains ?? []).contains(main) else { return nil }
+        return Destination(key: "email:\(main)", label: Self.titleCased(String(main.split(separator: ".")[0])), source: .rule)
     }
 
     /// A window's title without the browser's name and profile: "Upload - Google Chrome – Anshu" → "Upload".
@@ -111,11 +126,15 @@ public struct DestinationResolver: Sendable {
     /// Main domain: careers.acme.co.in → acme.co.in.
     // shortcut: a short list of multi-part suffixes, not the full Public Suffix List; switch to the full list if a real site resolves wrongly.
     private func domain(_ host: String) -> Destination {
+        let main = mainDomain(host)
+        return Destination(key: "domain:\(main)", label: main, source: .fallback)
+    }
+
+    private func mainDomain(_ host: String) -> String {
         let parts = host.split(separator: ".").map(String.init)
         let lastTwo = parts.suffix(2).joined(separator: ".")
         let keep = rules.multiPartSuffixes.contains(lastTwo) ? 3 : 2
-        let main = parts.suffix(keep).joined(separator: ".")
-        return Destination(key: "domain:\(main)", label: main, source: .fallback)
+        return parts.suffix(keep).joined(separator: ".")
     }
 
     /// nil when the regex doesn't match; .some(nil) when it matches without a label group.
