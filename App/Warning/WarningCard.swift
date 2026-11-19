@@ -3,7 +3,7 @@ import SwiftUI
 
 /// What one card shows, built from a Warning with the wording in Design/COPY.md.
 struct WarningCardContent: Equatable {
-    enum Tone { case warning, info, neutral }
+    enum Tone { case warning, info, neutral, confirm }
     struct Pill: Equatable {
         enum Kind { case bad, good, neutral }
         var title: String
@@ -84,6 +84,18 @@ struct WarningCardContent: Equatable {
         }
     }
 
+    /// The one-time "Got it" card at the end of onboarding (COPY.md: Info, check icon).
+    init(gotIt file: String, site: String) {
+        warning = Warning(rule: .softer)
+        moreChecks = 0
+        tone = .confirm
+        title = "Got it"
+        body = [("Fallback saw you pick ", false), (file, true), (" on \(site). That's all it takes.", false)]
+        primary = "Open Ledger"
+        secondary = ""
+        mute = nil
+    }
+
     /// "today", "yesterday", "on 2 Nov" (or "2 Nov" in a pill).
     static func when(_ date: Date?, on: Bool = true) -> String {
         guard let date else { return "recently" }
@@ -138,7 +150,9 @@ struct WarningCardView: View {
                             else { onLabel(label.trimmingCharacters(in: .whitespaces)) }
                         }
                         .buttonStyle(CardButtonStyle(primary: true))
-                        Button(content.secondary, action: onSecondary).buttonStyle(CardButtonStyle(primary: false))
+                        if !content.secondary.isEmpty {
+                            Button(content.secondary, action: onSecondary).buttonStyle(CardButtonStyle(primary: false))
+                        }
                     }
                     if content.mute != nil || content.moreChecks > 0 {
                         HStack {
@@ -205,6 +219,7 @@ struct WarningCardView: View {
         case .warning: ("exclamationmark.circle", Theme.warningText, Theme.warningTint)
         case .info: ("info.circle", Theme.primary, Theme.infoTint)
         case .neutral: ("doc.text", Theme.text, Theme.line)
+        case .confirm: ("checkmark", Theme.primary, Theme.infoTint)
         }
         return Image(systemName: symbol)
             .font(.system(size: 15))

@@ -1,3 +1,4 @@
+import FallbackCore
 import AppKit
 import Observation
 import os
@@ -60,9 +61,9 @@ struct DetectionLogView: View {
         VStack(spacing: 0) {
             HStack {
                 if trusted {
-                    Label("Accessibility allowed. Watching for file panels.", systemImage: "checkmark.circle")
+                    Label("\(SystemNames.accessibility) allowed. Watching for file panels.", systemImage: "checkmark.circle")
                 } else {
-                    Label("Accessibility not allowed yet. Fallback can't see file panels.", systemImage: "exclamationmark.triangle")
+                    Label("\(SystemNames.accessibility) not allowed yet. Fallback can't see file panels.", systemImage: "exclamationmark.triangle")
                     Button("Open Accessibility Settings") {
                         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
                     }

@@ -34,8 +34,12 @@ final class PanelWatcher {
     private var lastHost: NSRunningApplication?
     private var tracked: Tracked?
 
-    init(log: DetectionLog, onPick: @escaping OnPick) {
+    /// Whether an app is watched: the default list (FR-3) minus apps switched off in Settings › Apps.
+    private let isWatched: @MainActor (String?) -> Bool
+
+    init(log: DetectionLog, isWatched: @escaping @MainActor (String?) -> Bool, onPick: @escaping OnPick) {
         self.log = log
+        self.isWatched = isWatched
         self.onPick = onPick
     }
 
@@ -56,7 +60,7 @@ final class PanelWatcher {
             }
         }
         let front = NSWorkspace.shared.frontmostApplication
-        if let front, WatchedApps.contains(front.bundleIdentifier) { lastHost = front }
+        if let front, isWatched(front.bundleIdentifier) { lastHost = front }
 
         if var panel = tracked {
             if panel.element.isGone {

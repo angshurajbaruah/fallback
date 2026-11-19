@@ -19,6 +19,23 @@ struct FallbackApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 800)
 
+        Window("Welcome to Fallback", id: "onboarding") {
+            OnboardingView().environment(delegate.model)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+
+        Window("Settings", id: "settings") {
+            SettingsView().environment(delegate.model)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+
+        Window("Your stats", id: "stats") {
+            StatsView().environment(delegate.model)
+        }
+        .windowResizability(.contentSize)
+
         #if DEBUG
         // Development builds only: the M1 detection log (⌥⌘D in the popover).
         Window("Detection Log", id: "detection-log") {
@@ -37,9 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         if Snapshots.runIfRequested() || Scenarios.runIfRequested() { exit(0) }
         #endif
-        // Adds Fallback to the Accessibility list and shows macOS's prompt if access isn't granted yet.
-        _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
         model.start()
+        // After onboarding: re-adds Fallback to the list and shows macOS's prompt if access was removed.
+        // (On first run, onboarding's step 2 asks instead.)
+        if model.onboardingDone { _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) }
     }
 }
 
@@ -51,8 +69,16 @@ private struct MenuBarLabel: View {
 
     var body: some View {
         // The dot also marks a warning card that hasn't been handled yet (screen 03).
-        Image(nsImage: Self.image(paused: model.isPaused, problem: !model.isTrusted || model.activeCard != nil))
-            .onAppear { model.openLedgerWindow = { openWindow(id: "ledger") } }
+        // "Tick on every send" dims the icon for a moment; "Show send count" adds the number.
+        HStack(spacing: 4) {
+            Image(nsImage: Self.image(paused: model.isPaused || model.tickPulse, problem: !model.isTrusted || model.activeCard != nil))
+            if model.showSendCount { Text("\((try? model.store.sendCount()) ?? 0)") }
+        }
+            .onAppear {
+                model.openWindowHandler = { openWindow(id: $0) }
+                // First run (or after "Delete all data"): onboarding (Flow A).
+                if !model.onboardingDone { model.openWindow("onboarding") }
+            }
             .accessibilityLabel(model.isTrusted ? FallbackCore.appName : "\(FallbackCore.appName), needs Accessibility")
     }
 

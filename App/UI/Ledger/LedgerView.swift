@@ -99,6 +99,8 @@ struct LedgerView: View {
                 } else {
                     PauseMenu()
                 }
+                Button { model.openWindow("settings") } label: { Image(systemName: "slider.horizontal.3") }
+                    .buttonStyle(.plain).foregroundStyle(Theme.textMuted).help("Settings")
             }
             .padding(.horizontal, 10)
             .frame(height: 44)

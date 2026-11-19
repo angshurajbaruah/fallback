@@ -67,6 +67,8 @@ extension Store {
             let sensitivity = try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = 'sensitivity'")
                 .flatMap(Sensitivity.init(rawValue:)) ?? .balanced
             let host = url.flatMap { URL(string: $0)?.host() } ?? ""
+            let disabled = (try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = 'rules_off'") ?? "")
+                .split(separator: ",").compactMap { WarningRule(rawValue: String($0)) }
             let identified = !Self.serviceDestinations.contains(key) && !key.hasPrefix("app:") && !DestinationResolver.isUnknown(key: key)
                 && (send[6] as String) != Confidence.low.rawValue
 
@@ -77,7 +79,8 @@ extension Store {
                                 destinationText: "\(host) \(send[5] as String? ?? "")", destinationIdentified: identified,
                                 pastSends: pastSends, knownOrganisations: known, sensitivity: sensitivity,
                                 familyMuted: send[19] ?? false, destinationMuted: send[10], recentCards: recent, now: now,
-                                askForLabel: DestinationResolver.isUnknown(key: key) && (send[11] as String) != "user" && !(send[12] as Bool))
+                                askForLabel: DestinationResolver.isUnknown(key: key) && (send[11] as String) != "user" && !(send[12] as Bool),
+                                disabledRules: Set(disabled))
         }
     }
 

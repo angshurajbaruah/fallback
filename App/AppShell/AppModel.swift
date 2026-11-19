@@ -64,6 +64,24 @@ final class AppModel {
     private(set) var folders: [String] = []
     private(set) var suggestions: [[Int64]] = []
     private(set) var indexing: (done: Int, total: Int)?
+    /// The file being fingerprinted right now, for onboarding step 5.
+    private(set) var indexingFile: String?
+
+    // M5: onboarding, Settings and Stats.
+    /// The permission's name as this Mac's macOS shows it ("Accessibility" or "Device Control and Data Access").
+    let permissionName = SystemNames.accessibility
+    var onboardingDone = false
+    /// Apps switched off in Settings › Apps (FR-3).
+    var disabledApps: Set<String> = []
+    /// Briefly true after each send, for "Tick on every send".
+    var tickPulse = false
+    /// Onboarding step 6: the next pick shows the one-time "Got it" card.
+    var gotItArmed = false
+    private(set) var gotItSeen = false
+    /// Opens a window by id ("ledger", "settings", "stats", "onboarding"); set by the menu-bar label,
+    /// which can reach SwiftUI's openWindow.
+    @ObservationIgnored var openWindowHandler: ((String) -> Void)?
+    @ObservationIgnored let hotKey = HotKey()
 
     @ObservationIgnored private var watcher: PanelWatcher?
     @ObservationIgnored private var indexer: FileIndexer?
@@ -101,7 +119,11 @@ final class AppModel {
     #endif
 
     func start() {
-        watcher = PanelWatcher(log: log) { [weak self] picks, context, method in
+        loadSettings()
+        watcher = PanelWatcher(log: log, isWatched: { [weak self] id in
+            guard let id else { return false }
+            return WatchedApps.contains(id) && !(self?.disabledApps.contains(id) ?? false)
+        }) { [weak self] picks, context, method in
             self?.record(picks, context: context, method: method)
         }
         watcher?.start()
@@ -120,28 +142,19 @@ final class AppModel {
     // MARK: Indexing (FR-15 to FR-22)
 
     private func startIndexer() {
-        let rules = IndexRules(
-            extraTypes: (try? store.setting("index_extra_types"))?.split(separator: ",").map(String.init) ?? [],
-            extraExcludes: (try? store.setting("index_extra_excludes"))?.split(separator: ",").map(String.init) ?? [])
-        indexer = FileIndexer(store: store, analyzer: FileAnalyzer(readPDF: PDFContents.read), rules: rules) { [weak self] event in
+        indexer = FileIndexer(store: store, analyzer: FileAnalyzer(readPDF: PDFContents.read), rules: indexRules) { [weak self] event in
             Task { @MainActor in self?.indexerEvent(event) }
         }
-        var saved = (try? store.watchedFolders()) ?? []
-        if saved.isEmpty {
-            // shortcut: M3 watches ~/FallbackTest only (owner's choice); onboarding (M5) asks for real folders.
-            let test = NSString(string: "~/FallbackTest").expandingTildeInPath
-            if FileManager.default.fileExists(atPath: test) {
-                try? store.addWatchedFolder(test)
-                saved = [test]
-            }
-        }
+        let saved = (try? store.watchedFolders()) ?? [] // chosen in onboarding (S5) and Settings › Folders
         folders = saved
         indexer?.watch(saved)
     }
 
     private func indexerEvent(_ event: FileIndexer.Event) {
         switch event {
-        case .scanning(let done, let total): indexing = done < total ? (done, total) : nil
+        case .scanning(let done, let total, let current):
+            indexing = done < total ? (done, total) : nil
+            indexingFile = current
         case .updated:
             suggestions = indexer?.suggestions ?? []
             if let (file, name) = pendingFamilyName, let family = (try? store.files(ids: [file]))?.first?.familyID {
@@ -258,10 +271,16 @@ final class AppModel {
     /// The last card's document and file, for spotting a save within 2 minutes (FR-27).
     @ObservationIgnored private var lastCard: (warningID: Int64, familyID: Int64?, fileID: Int64?, at: Date)?
     @ObservationIgnored let presenter = WarningPresenter()
-    /// Opens the Ledger window; set by the menu-bar label, which can reach SwiftUI's openWindow.
-    @ObservationIgnored var openLedgerWindow: (() -> Void)?
 
     private func evaluateWarnings(for sendIDs: [Int64], appName: String) {
+        pulseTick()
+        // Onboarding's "Try it" step: the first pick gets the one-time "Got it" card instead (Flow A step 6).
+        if gotItArmed, let first = sendIDs.first, let send = try? store.send(id: first) {
+            gotItArmed = false
+            gotItSeen = true
+            showGotIt(send)
+            return
+        }
         var cardShown = false
         for sendID in sendIDs {
             detectSave(sendID)
@@ -363,13 +382,25 @@ final class AppModel {
         changed()
     }
 
-    private func openLedger(_ route: LedgerRoute) {
+    func openLedger(_ route: LedgerRoute) {
         show(route)
-        openLedgerWindow?()
+        openWindow("ledger")
+    }
+
+    func openWindow(_ id: String) {
+        openWindowHandler?(id)
         NSApp.activate()
     }
 
     func changed() { version += 1 }
+
+    /// Watches a new set of folders (onboarding step 4, Settings › Folders).
+    func replaceFolders(_ paths: [String]) {
+        folders = paths
+        indexer?.watch(paths)
+    }
+
+    func indexerUpdateRules() { indexer?.update(rules: indexRules) }
 
     // MARK: Pause (FR-30)
 

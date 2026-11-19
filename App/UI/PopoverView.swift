@@ -192,7 +192,7 @@ struct PopoverView: View {
             Image(systemName: "exclamationmark.circle").foregroundStyle(Theme.warningText).font(.system(size: 15))
             VStack(alignment: .leading, spacing: 6) {
                 Text("Fallback can't see file pickers").font(Theme.bodyMedium).foregroundStyle(Theme.text)
-                Text("Accessibility was turned off. Turn it back on to keep your trail complete.")
+                Text("\(model.permissionName) was turned off. Turn it back on to keep your trail complete.")
                     .font(Theme.caption).foregroundStyle(Theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 6) {
@@ -204,7 +204,7 @@ struct PopoverView: View {
                         .buttonStyle(FallbackButtonStyle(kind: .ghost))
                         .popover(isPresented: $showWhy) {
                             // Wording from PRD Flow A, step 2.
-                            Text("Fallback needs Accessibility so it can see which file you pick when you attach something.")
+                            Text("Fallback needs \(model.permissionName) so it can see which file you pick when you attach something.")
                                 .font(Theme.caption).frame(width: 240).padding(12)
                         }
                 }
@@ -238,7 +238,8 @@ struct PopoverView: View {
             } else {
                 PauseMenu()
             }
-            // Settings (S6) arrives in M5.
+            Button { model.openWindow("settings") } label: { Image(systemName: "slider.horizontal.3") }
+                .buttonStyle(.plain).foregroundStyle(Theme.textMuted).help("Settings")
         }
         .padding(.horizontal, 16)
         .frame(height: 44)

@@ -51,6 +51,18 @@ enum Snapshots {
         jumped.show(.byDocument(family: resumeFamily))
         jumped.open(.allSends(selected: (try? jumped.store.sends(limit: 1))?.first?.id))
         render(LedgerView().environment(jumped), size: size, to: folder.appending(path: "15-back-link.png"))
+        // M5: onboarding steps, Settings tabs, Stats, the delete dialog.
+        for step in 1...6 {
+            render(OnboardingView(step: step).environment(sampleModel()), size: CGSize(width: 920, height: 680),
+                   to: folder.appending(path: "16-onboarding-\(step).png"))
+        }
+        for tab in SettingsView.Tab.allCases {
+            render(SettingsView(tab: tab).environment(sampleModel()), size: CGSize(width: 880, height: 820),
+                   to: folder.appending(path: "17-settings-\(tab.rawValue.lowercased()).png"))
+        }
+        render(StatsView().environment(sampleModel()), size: CGSize(width: 640, height: 760), to: folder.appending(path: "18-stats.png"))
+        render(ShareCard(sends: 214, caught: 9), size: CGSize(width: 1200, height: 630), to: folder.appending(path: "19-share.png"))
+        render(DeleteAllDialog(sends: 214, fingerprints: 3948).environment(sampleModel()), width: 400, to: folder.appending(path: "20-delete.png"))
         let empty = try! AppModel(store: Store.inMemory())
         empty.debugSet(suggestions: [], folders: ["/Users/arjun/Documents", "/Users/arjun/Desktop", "/Users/arjun/Downloads"])
         render(LedgerView().environment(empty), size: size, to: folder.appending(path: "13-ledger-empty.png"))

@@ -26,7 +26,7 @@ public enum WarningRule: String, Sendable, Codable, CaseIterable {
 public enum Sensitivity: String, Sendable, CaseIterable {
     case strict, balanced, quiet
 
-    func showsCard(_ rule: WarningRule) -> Bool {
+    public func showsCard(_ rule: WarningRule) -> Bool {
         switch self {
         case .strict: true
         case .balanced: [.w1, .w4, .w5, .softer, .unknownDestination].contains(rule)
@@ -112,13 +112,15 @@ public struct WarningInput: Sendable {
     public var now: Date
     /// FR-37: the destination couldn't be resolved, has no user label, and hasn't been asked about before.
     public var askForLabel: Bool = false
+    /// Rules turned off in Settings › Warnings (FR-32). The softer check follows W1.
+    public var disabledRules: Set<WarningRule> = []
 
     public init(sendID: Int64, fileID: Int64?, fileName: String, sha256: String?, editedAt: Date?, familyID: Int64?,
                 versionNumber: Int?, isVariant: Bool, exportOfID: Int64?, family: [FamilyFile],
                 destinationID: Int64, destinationKey: String, destinationLabel: String, destinationText: String,
                 destinationIdentified: Bool, pastSends: [PastSend], knownOrganisations: [String: Int64],
                 sensitivity: Sensitivity = .balanced, familyMuted: Bool = false, destinationMuted: Bool = false,
-                recentCards: [ShownCard] = [], now: Date = Date(), askForLabel: Bool = false) {
+                recentCards: [ShownCard] = [], now: Date = Date(), askForLabel: Bool = false, disabledRules: Set<WarningRule> = []) {
         self.sendID = sendID; self.fileID = fileID; self.fileName = fileName; self.sha256 = sha256; self.editedAt = editedAt
         self.familyID = familyID; self.versionNumber = versionNumber; self.isVariant = isVariant; self.exportOfID = exportOfID
         self.family = family; self.destinationID = destinationID; self.destinationKey = destinationKey
@@ -127,6 +129,7 @@ public struct WarningInput: Sendable {
         self.knownOrganisations = knownOrganisations; self.sensitivity = sensitivity; self.familyMuted = familyMuted
         self.destinationMuted = destinationMuted; self.recentCards = recentCards; self.now = now
         self.askForLabel = askForLabel
+        self.disabledRules = disabledRules
     }
 }
 
@@ -141,6 +144,12 @@ public struct Warning: Sendable, Equatable {
     /// The organisation name found in the file name (W4) and its destination, if any.
     public var token: String?
     public var tokenDestinationID: Int64?
+
+    public init(rule: WarningRule, otherFile: FamilyFile? = nil, previousSend: PastSend? = nil,
+                token: String? = nil, tokenDestinationID: Int64? = nil) {
+        self.rule = rule; self.otherFile = otherFile; self.previousSend = previousSend
+        self.token = token; self.tokenDestinationID = tokenDestinationID
+    }
 }
 
 /// What the WarningEngine decided for one pick.
@@ -175,6 +184,7 @@ public enum WarningEngine {
         if let w5 = staleExport(input) { fired.append(w5) }
         if let w3 = changedSinceLastSend(input) { fired.append(w3) }
         if let w2 = alreadySent(input) { fired.append(w2) }
+        fired.removeAll { input.disabledRules.contains($0.rule) || ($0.rule == .softer && input.disabledRules.contains(.w1)) }
         fired.sort { $0.rule.precedence < $1.rule.precedence }
 
         // FR-37: the label question shows only when no warning fired for this pick; otherwise it stays

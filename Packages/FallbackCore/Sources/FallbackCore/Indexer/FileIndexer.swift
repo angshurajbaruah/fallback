@@ -7,13 +7,13 @@ import os
 /// Everything runs on one low-priority queue.
 public final class FileIndexer: @unchecked Sendable { // all mutable state is touched only on `queue`
     public enum Event: Sendable {
-        case scanning(done: Int, total: Int)
+        case scanning(done: Int, total: Int, current: String?)
         case updated
     }
 
     private let store: Store
     private let analyzer: FileAnalyzer
-    private let rules: IndexRules
+    private var rules: IndexRules
     private let onEvent: @Sendable (Event) -> Void
     private let queue = DispatchQueue(label: "com.angshurajbaruah.fallback.indexer", qos: .utility)
     private let logger = Logger(subsystem: "com.angshurajbaruah.fallback", category: "indexer")
@@ -42,6 +42,15 @@ public final class FileIndexer: @unchecked Sendable { // all mutable state is to
             folders = paths.map(Self.realPath)
             scanAll()
             startStream()
+        }
+    }
+
+    /// New rules from Settings › Folders: re-scans with them.
+    public func update(rules: IndexRules) {
+        queue.async { [self] in
+            guard rules != self.rules else { return }
+            self.rules = rules
+            scanAll()
         }
     }
 
@@ -97,7 +106,7 @@ public final class FileIndexer: @unchecked Sendable { // all mutable state is to
         let reread = (try? store.setting("analysis_version")) != Self.analysisVersion
         for (done, path) in paths.enumerated() {
             index(path, force: reread)
-            if done % 25 == 0 { onEvent(.scanning(done: done, total: paths.count)) }
+            if done % 10 == 0 { onEvent(.scanning(done: done, total: paths.count, current: path)) }
         }
         // Files deleted while Fallback wasn't running.
         let seen = Set(paths)
@@ -107,14 +116,14 @@ public final class FileIndexer: @unchecked Sendable { // all mutable state is to
             }
         }
         try? store.setSetting("analysis_version", Self.analysisVersion)
-        onEvent(.scanning(done: paths.count, total: paths.count))
+        onEvent(.scanning(done: paths.count, total: paths.count, current: nil))
         regroupNow()
     }
 
     private func eligibleFiles(in folder: String) -> [String] {
         let url = URL(filePath: folder)
         guard let walker = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey, .fileSizeKey],
-                                                          options: [.skipsHiddenFiles]) else { return [] }
+                                                          options: rules.skipSystem ? [.skipsHiddenFiles] : []) else { return [] }
         var out: [String] = []
         while let item = walker.nextObject() as? URL {
             let values = try? item.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .fileSizeKey])
