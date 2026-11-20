@@ -265,6 +265,7 @@ final class AppModel {
         var warning: Warning
         var familyID: Int64?
         var destinationID: Int64
+        var fileID: Int64?
     }
 
     /// The card on screen; the menu-bar icon keeps a Tangerine dot until it's handled (screen 03).
@@ -312,7 +313,7 @@ final class AppModel {
     private func showCard(_ warning: Warning, input: WarningInput, warningID: Int64, more: Int, appName: String) {
         let content = WarningCardContent(warning, input: input, moreChecks: more, appName: shortAppName(appName))
         activeCard = ActiveCard(warningID: warningID, sendID: input.sendID, warning: warning, familyID: input.familyID,
-                                destinationID: input.destinationID)
+                                destinationID: input.destinationID, fileID: input.fileID)
         // FR-37: asked once per place, ever, whatever the answer.
         if warning.rule == .unknownDestination { try? store.markLabelAsked(destination: input.destinationID) }
         lastCard = (warningID, input.familyID, input.fileID, Date())
@@ -356,6 +357,11 @@ final class AppModel {
             openLedger(.allSends(selected: card.warning.previousSend?.sendID))
         case .w3:
             openLedger(.byDestination(selected: card.destinationID))
+        case .w4 where card.warning.unfamiliar:
+            // P-2: no earlier sends to show, so show the file, ready to swap for the right one.
+            if let id = card.fileID, let path = (try? store.files(ids: [id]))?.first?.path {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)])
+            }
         case .w4:
             let id = card.warning.tokenDestinationID.flatMap { $0 == 0 ? nil : $0 }
             openLedger(.byDestination(selected: id))
@@ -370,6 +376,9 @@ final class AppModel {
         if card.warning.rule == .w2 {
             try? store.muteDestination(card.destinationID)
             closeCard("muted", detail: "Muted for this destination")
+        } else if card.warning.unfamiliar, let token = card.warning.token {
+            try? store.addNotOrganisation(token) // P-2: never taken for a company again
+            closeCard("muted", detail: "“\(token)” isn't a company name")
         } else {
             if let family = card.familyID { try? store.muteFamily(family) }
             closeCard("muted", detail: "Muted for this document")

@@ -403,7 +403,13 @@ A file whose pairwise links call it a sibling variant is a variant in the family
 3. If a word matches a known organisation, and that organisation is **not** part of the current destination (its label, domain or page title), W4 fires.
 4. If the destination couldn't be identified (Low confidence), W4 doesn't fire. It never guesses.
 
-Known gap: W4 can't catch a file tailored for a company you haven't sent anything to yet, and it never fires for email, because Gmail, Outlook and Mail aren't identified destinations. Proposals P-1 and P-2 in 16.4 address both. Neither is part of v1 yet.
+5. **Email (P-1, shipped 20 Nov 2026):** in Mail, Outlook, or Gmail/Outlook on the web, the To recipients' company domain is the destination (careers@palmonas.com → Palmonas), so W4 works for email. Personal addresses and mixed companies stay unidentified.
+6. **A company not yet in the ledger (P-2, shipped 20 Nov 2026):** W4 also fires when a word right next to a document word in the file name (Resume\_**Zinier**, Cover\_Letter\_**Zamp**) isn't the destination, even though Fallback has never seen that company. That word must not be:
+   - the user's own name (from macOS);
+   - a dictionary word (macOS's built-in list, offline);
+   - a common word, or one the user marked "Not a company name".
+
+   The destination must be identified (step 4). Card in Strict and Balanced, Ledger only in Quiet. See 16.4 for details and the false-alarm cases.
 
 ## 9. How it works on macOS: architecture and detection
 
@@ -876,8 +882,8 @@ DMG and website live. GitHub README polished, with the demo GIF at the top. Issu
 3. Is 90 days the right window for W2?
 4. Does the menu-bar tick animation feel reassuring or distracting?
 5. Is opt-in, anonymous counting worth adding in v1.1, given the privacy story?
-6. Should P-1 (recipient domain as destination) move into v1.0, given that the mistake Fallback exists for often happens in email? See 16.4.
-7. Is P-2 (an information card for an unfamiliar company name) worth its false alarms? Decide after dogfooding P-1. See 16.4.
+6. ~~Should P-1 move into v1.0?~~ Done: shipped 20 Nov 2026.
+7. P-2 shipped as W4 on 20 Nov 2026. Is it worth its false alarms? Decide after two weeks of dogfooding (16.4).
 
 ### 16.3 Roadmap
 
@@ -887,8 +893,6 @@ DMG and website live. GitHub README polished, with the demo GIF at the top. Issu
 - Import your Sent email history from Gmail on the Mac, with a Google app password, so your trail starts complete on day one.
 - Touch ID lock for the Ledger.
 - Quick Look preview inside the warning card.
-
-- P-1 below, if it isn't pulled into v1.0.
 
 **v1.2**
 
@@ -910,9 +914,11 @@ Written up after a real test on 19 Nov 2026: Anshuraj_Baruah_Cover_Letter_Zamp.p
 
 #### P-1: the email recipient's domain becomes the destination (extends FR-8)
 
-**Status (20 Nov 2026): built, awaiting a live check in Gmail and Mail.** As built:
+**Status (20 Nov 2026): shipped, checked live.** A Gmail draft to careers@palmonas.com was recorded as Palmonas. A Mail message to hr@acme.com was recorded as Acme, and attaching Cover\_Letter\_Palmonas.pdf there showed "Check the recipient". As built:
 - **Where it works:** Mail and Outlook (the apps), and Gmail or Outlook in a browser.
-- **How it reads:** it looks for the To field by its label ("To:", "To recipients", "To") and reads addresses only inside that field and its row.
+- **How it reads, in Mail:** the To field is the text field labelled "To:" by a separate label; the addresses sit inside it.
+- **How it reads, in Gmail:** Gmail folds the To field into a line of text once you leave it, so Fallback reads addresses above the Subject field in the same compose window. It never reads past Subject, and skips the account's own address.
+- **What's never read:** message lists (an inbox) are never searched.
 - **What's kept:** only the company domain is kept, as a destination keyed `email:{domain}`. The addresses themselves are never stored.
 - **When it can't read the field,** or the To field shows a contact name without an address, the destination stays as before ("Gmail", "Mail").
 - **Not covered:** WhatsApp Web, which has phone numbers or contact names, not company domains.
@@ -929,6 +935,15 @@ Written up after a real test on 19 Nov 2026: Anshuraj_Baruah_Cover_Letter_Zamp.p
 **Recommendation.** Do this before P-2. It fixes the exact case above with no new false alarms, because it reuses W4's existing, precise rule.
 
 #### P-2: "Looks tailored for…" (a softer W4 for unfamiliar names)
+
+**Status (20 Nov 2026): shipped, differently from the proposal below.** It ships as **W4 itself** ("Check the recipient", warning tone), at the owner's request, not as a separate information card. As built:
+- **Which words:** a word immediately before or after a document word (resume, cv, cover, letter, proposal, deck, pitch, application, portfolio, sow, quote, quotation). CamelCase stays one word (TwinCafe). The "differing word of a tailored variant" condition isn't used.
+- **Your own name:** taken from the macOS account name, not learned from files.
+- **Dictionary words** (macOS's built-in word list) never count. So "Origin" or "Master" never warn, and neither does "Acme" until it's in the ledger.
+- **Buttons:** Show in Finder (the picked file) · Send anyway · "Not a company name", which stores the word so it never counts again. *Shortcut: there's no screen to undo "Not a company name" yet; add one to Settings › Warnings › Muted if it's needed.*
+- **Sensitivity:** card in Strict and Balanced, Ledger only in Quiet. Known companies still show a card in Quiet, as before.
+- **Wins over the softer check:** a file tailored for one company going to another now shows this card first. Resume\_Razorpay to Northwind: "Check the recipient: Razorpay", with the softer check under "more".
+- **No dogfood gate yet:** the "more than 1 in 5 dismissed" check below hasn't happened yet.
 
 **What.** A file whose name says it was tailored for a company you've never sent anything to, going to a destination that is clearly someone else. An information card (Frosted Blue, not Tangerine): "This looks tailored for **Zamp**. You're sending it to **Palmonas**." Card in Strict and Balanced, Ledger only in Quiet. Actions: Show the file · Send anyway · mute link "This isn't a company", which adds the word to an ignore list. Once anything has been sent to Zamp, the normal W4 takes over.
 

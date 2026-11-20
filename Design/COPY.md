@@ -19,6 +19,8 @@ Every card has the header "Fallback · now" plus a close button. The mute line i
 
 The destination-unknown card has a focused text field labelled "Label this send" with the placeholder "e.g. Acme finance".
 
+W4 for a company Fallback hasn't seen yet (PRD 16.4 P-2) uses the same title and body, with the primary **Show in Finder** (reveals the picked file) and the mute link **Not a company name**.
+
 When more than one rule fires (FR-24), the mute row shows "{n} more check(s) ›" on the right.
 
 Version strip labels: W1 shows "{date} · picking now" → "{date} · edited {when}". W3 shows "{date} · {destination} has" → "{date} · sending now". Each {date} is that file's own last-edited date ("today", "yesterday", "5 Nov"). In the W1 body, {newer} is the newer file's name (e.g. resume_v5.pdf). Cards never show family version numbers (v1, v2…), since they can contradict the number in a file name; the Ledger and the document timeline keep them, where the whole family is on screen. W5 shows "PDF · made {date}" → "{TYPE} · edited {when}".

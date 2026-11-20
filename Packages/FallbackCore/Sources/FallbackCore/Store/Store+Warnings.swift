@@ -66,6 +66,8 @@ extension Store {
             }
             let sensitivity = try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = 'sensitivity'")
                 .flatMap(Sensitivity.init(rawValue:)) ?? .balanced
+            let notOrganisations = (try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = 'not_organisations'") ?? "")
+                .split(separator: ",").map(String.init)
             let host = url.flatMap { URL(string: $0)?.host() } ?? ""
             let disabled = (try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = 'rules_off'") ?? "")
                 .split(separator: ",").compactMap { WarningRule(rawValue: String($0)) }
@@ -80,7 +82,9 @@ extension Store {
                                 pastSends: pastSends, knownOrganisations: known, sensitivity: sensitivity,
                                 familyMuted: send[19] ?? false, destinationMuted: send[10], recentCards: recent, now: now,
                                 askForLabel: DestinationResolver.isUnknown(key: key) && (send[11] as String) != "user" && !(send[12] as Bool),
-                                disabledRules: Set(disabled))
+                                disabledRules: Set(disabled),
+                                ownNames: Set(NSFullUserName().lowercased().split { !$0.isLetter }.map(String.init)),
+                                notOrganisations: Set(notOrganisations))
         }
     }
 
@@ -102,6 +106,17 @@ extension Store {
                 if isCard { cardID = db.lastInsertedRowID }
             }
             return cardID
+        }
+    }
+
+    /// P-2 "Not a company name": this word never counts as an unfamiliar company again.
+    public func addNotOrganisation(_ word: String) throws {
+        try db.write { db in
+            var words = Set((try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = 'not_organisations'") ?? "")
+                .split(separator: ",").map(String.init))
+            words.insert(word.lowercased())
+            try db.execute(sql: "INSERT INTO settings (key, value) VALUES ('not_organisations', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                           arguments: [words.sorted().joined(separator: ",")])
         }
     }
 

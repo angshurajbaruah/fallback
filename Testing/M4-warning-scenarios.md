@@ -59,7 +59,7 @@ Start Fallback with `cd ~/fallback && make run`.
 
 ## Also: the softer check
 
-Pick `Resume_Razorpay.pdf`. **Expect** **Another version exists**, never "Older version". Its buttons are **Show other version** and **It's the right one**.
+Pick `Resume_Razorpay.pdf`. **Expect** never "Older version". On the test page you'll first see **Check the recipient: Razorpay** (the file was tailored for Razorpay, and this page isn't Razorpay: PRD 16.4 P-2), with **Another version exists** under "1 more check ›". Its buttons are **Show other version** and **It's the right one**.
 
 ## Muting
 

@@ -114,13 +114,18 @@ public struct WarningInput: Sendable {
     public var askForLabel: Bool = false
     /// Rules turned off in Settings › Warnings (FR-32). The softer check follows W1.
     public var disabledRules: Set<WarningRule> = []
+    /// P-2: words of the user's own name (from macOS), never taken for a company.
+    public var ownNames: Set<String> = []
+    /// P-2: words the user said aren't company names ("Not a company name" on a card).
+    public var notOrganisations: Set<String> = []
 
     public init(sendID: Int64, fileID: Int64?, fileName: String, sha256: String?, editedAt: Date?, familyID: Int64?,
                 versionNumber: Int?, isVariant: Bool, exportOfID: Int64?, family: [FamilyFile],
                 destinationID: Int64, destinationKey: String, destinationLabel: String, destinationText: String,
                 destinationIdentified: Bool, pastSends: [PastSend], knownOrganisations: [String: Int64],
                 sensitivity: Sensitivity = .balanced, familyMuted: Bool = false, destinationMuted: Bool = false,
-                recentCards: [ShownCard] = [], now: Date = Date(), askForLabel: Bool = false, disabledRules: Set<WarningRule> = []) {
+                recentCards: [ShownCard] = [], now: Date = Date(), askForLabel: Bool = false, disabledRules: Set<WarningRule> = [],
+                ownNames: Set<String> = [], notOrganisations: Set<String> = []) {
         self.sendID = sendID; self.fileID = fileID; self.fileName = fileName; self.sha256 = sha256; self.editedAt = editedAt
         self.familyID = familyID; self.versionNumber = versionNumber; self.isVariant = isVariant; self.exportOfID = exportOfID
         self.family = family; self.destinationID = destinationID; self.destinationKey = destinationKey
@@ -130,6 +135,7 @@ public struct WarningInput: Sendable {
         self.destinationMuted = destinationMuted; self.recentCards = recentCards; self.now = now
         self.askForLabel = askForLabel
         self.disabledRules = disabledRules
+        self.ownNames = ownNames; self.notOrganisations = notOrganisations
     }
 }
 
@@ -144,11 +150,13 @@ public struct Warning: Sendable, Equatable {
     /// The organisation name found in the file name (W4) and its destination, if any.
     public var token: String?
     public var tokenDestinationID: Int64?
+    /// P-2: W4 for a company Fallback has never seen (not yet a destination in the ledger).
+    public var unfamiliar: Bool
 
     public init(rule: WarningRule, otherFile: FamilyFile? = nil, previousSend: PastSend? = nil,
-                token: String? = nil, tokenDestinationID: Int64? = nil) {
+                token: String? = nil, tokenDestinationID: Int64? = nil, unfamiliar: Bool = false) {
         self.rule = rule; self.otherFile = otherFile; self.previousSend = previousSend
-        self.token = token; self.tokenDestinationID = tokenDestinationID
+        self.token = token; self.tokenDestinationID = tokenDestinationID; self.unfamiliar = unfamiliar
     }
 }
 
@@ -254,6 +262,8 @@ public enum WarningEngine {
     /// Why this warning can't be a card, or nil if it can.
     static func hiddenReason(_ warning: Warning, _ input: WarningInput) -> HiddenReason? {
         guard input.sensitivity.showsCard(warning.rule) else { return .sensitivity(input.sensitivity) }
+        // P-2 trades some precision for catching first applications: Quiet keeps it to the Ledger.
+        if warning.unfamiliar, input.sensitivity == .quiet { return .sensitivity(.quiet) }
         // The softer check is a card only if the other file changed in the last 7 days (PRD 8.3).
         if warning.rule == .softer {
             guard let edited = warning.otherFile?.editedAt, input.now.timeIntervalSince(edited) <= softerCardWindow else { return .softerWindow }
@@ -347,8 +357,41 @@ public enum WarningEngine {
             guard let (name, id) = known[word], !here.contains(word) else { continue }
             return Warning(rule: .w4, token: name, tokenDestinationID: id)
         }
+        // P-2 (PRD 16.4): a company Fallback hasn't seen yet, named where tailored documents put it
+        // (Resume_Zinier, Cover_Letter_Zamp), going somewhere that clearly isn't that company.
+        for (word, shown) in tailoredWords(input.fileName) {
+            guard known[word] == nil, !here.contains(word), !input.ownNames.contains(word),
+                  !input.notOrganisations.contains(word), !commonWords.contains(word), !Self.dictionary.contains(word) else { continue }
+            return Warning(rule: .w4, token: shown, unfamiliar: true)
+        }
         return nil
     }
+
+    /// Document words that tailored copies are named around.
+    static let documentWords: Set<String> = ["resume", "cv", "cover", "letter", "proposal", "deck", "pitch", "application",
+                                             "portfolio", "sow", "quote", "quotation"]
+
+    /// Words right before or after a document word: "Zinier" in Anshuraj_Baruah_Zinier_Resume, "Zamp" in
+    /// Cover_Letter_Zamp. CamelCase stays one word (TwinCafe), as a company name would. Lowercased, with how it's written.
+    static func tailoredWords(_ fileName: String) -> [(word: String, shown: String)] {
+        let base = (fileName as NSString).deletingPathExtension
+        let tokens = base.split { !$0.isLetter }.map(String.init)
+        var found: [(String, String)] = []
+        for (index, token) in tokens.enumerated() where documentWords.contains(token.lowercased()) {
+            for neighbour in [index - 1, index + 1] where tokens.indices.contains(neighbour) {
+                let shown = tokens[neighbour], word = shown.lowercased()
+                guard word.count >= 3, !documentWords.contains(word), !found.contains(where: { $0.0 == word }) else { continue }
+                found.append((word, shown))
+            }
+        }
+        return found
+    }
+
+    /// macOS's built-in word list (offline). A dictionary word (origin, master) is never taken for an unfamiliar company.
+    static let dictionary: Set<String> = {
+        guard let text = try? String(contentsOfFile: "/usr/share/dict/words", encoding: .utf8) else { return [] }
+        return Set(text.split(separator: "\n").map { $0.lowercased() })
+    }()
 
     /// Step 2: words of the file name, CamelCase split, lowercased, without short or common words.
     static func nameWords(_ fileName: String) -> [String] {

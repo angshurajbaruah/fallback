@@ -66,10 +66,19 @@ struct WarningEngineTests {
     }
 
     @Test func w1_neverForATailoredVariant_softerInstead() {
-        let result = WarningEngine.evaluate(input("Resume_Razorpay.pdf", variant: true))
+        // Sent to Razorpay itself, so the name matches the place (P-2 stays quiet).
+        let razorpay = ("lever:razorpay", "Razorpay", "jobs.lever.co Apply")
+        let result = WarningEngine.evaluate(input("Resume_Razorpay.pdf", variant: true, to: razorpay))
         #expect(!result.fired.contains { $0.rule == .w1 })
         #expect(result.card?.rule == .softer)
         #expect(result.card?.otherFile?.name == "resume_v5.pdf") // the most recently changed relative
+    }
+
+    /// The same Razorpay resume going to Northwind: P-2's "Check the recipient" comes first, the softer check under "more".
+    @Test func tailoredForOneCompany_sentToAnother_p2BeforeSofter() {
+        let result = WarningEngine.evaluate(input("Resume_Razorpay.pdf", variant: true))
+        #expect(result.card?.rule == .w4 && result.card?.token == "Razorpay")
+        #expect(result.fired.contains { $0.rule == .softer })
     }
 
     @Test func w1_onlyComparesTheSameFormat() {
@@ -94,7 +103,8 @@ struct WarningEngineTests {
 
     @Test func softer_stillBetweenAVariantAndItsMainLine() {
         let members = [FamilyFile(id: 2, name: "Resume.pdf", editedAt: date(1), versionNumber: 1, relationToPicked: .variant)]
-        let result = WarningEngine.evaluate(input("Resume_Razorpay.pdf", edited: date(10), version: nil, variant: true, members: members))
+        let result = WarningEngine.evaluate(input("Resume_Razorpay.pdf", edited: date(10), version: nil, variant: true, members: members,
+                                                  to: ("lever:razorpay", "Razorpay", "jobs.lever.co Apply")))
         #expect(result.card?.rule == .softer)
         #expect(result.card?.otherFile?.name == "Resume.pdf")
     }
@@ -189,6 +199,58 @@ struct WarningEngineTests {
         #expect(WarningEngine.organisationKey("#globex") == "globex")
         #expect(WarningEngine.organisationKey("Meera Iyer") == nil)
         #expect(WarningEngine.organisationKey("CV") == nil)
+    }
+
+    // MARK: P-2, a company Fallback hasn't seen yet
+
+    func firstApplication(_ name: String, to destination: (key: String, label: String, text: String) = ("email:palmonas.com", "Palmonas", "mail.google.com Inbox - Gmail"),
+                          identified: Bool = true, sensitivity: Sensitivity = .balanced, notCompanies: Set<String> = []) -> WarningResult {
+        var i = input(name, members: [], to: destination, identified: identified, sensitivity: sensitivity)
+        i.ownNames = ["anshuraj", "baruah"]
+        i.notOrganisations = notCompanies
+        return WarningEngine.evaluate(i)
+    }
+
+    @Test func p2_coverLetterForZampSentToPalmonas() {
+        let card = firstApplication("Anshuraj_Baruah_Cover_Letter_Zamp.pdf").card
+        #expect(card?.rule == .w4 && card?.unfamiliar == true)
+        #expect(card?.token == "Zamp")
+    }
+
+    @Test func p2_resumeTailoredForZinier_camelCaseStaysOneName() {
+        #expect(firstApplication("Anshuraj_Baruah_Zinier_Resume.pdf").card?.token == "Zinier")
+        #expect(firstApplication("Anshuraj_Baruah_TwinCafe_Resume.pdf").card?.token == "TwinCafe")
+    }
+
+    @Test func p2_quietWhenTheDestinationIsThatCompany() {
+        #expect(firstApplication("Cover_Letter_Palmonas.pdf").fired.isEmpty)
+    }
+
+    @Test(arguments: ["Anshuraj_Baruah_Resume.pdf",           // own name
+                      "Anshuraj_Baruah_Origin_Resume.pdf",    // a dictionary word
+                      "Master_Resume.pdf",                    // a dictionary word
+                      "Fallback_Teaser_Zamp.mp4",             // not next to a document word
+                      "Resume_final.pdf"])                    // a common word
+    func p2_neverForTheseNames(name: String) {
+        #expect(!firstApplication(name).fired.contains { $0.rule == .w4 })
+    }
+
+    @Test func p2_neverForAnUnidentifiedDestination() {
+        #expect(firstApplication("Cover_Letter_Zamp.pdf", to: ("gmail", "Gmail", "mail.google.com"), identified: false).fired.isEmpty)
+    }
+
+    @Test func p2_notACompanyNameIsRemembered() {
+        #expect(!firstApplication("Master_Resume_XYZ.pdf", notCompanies: ["xyz"]).fired.contains { $0.rule == .w4 })
+        #expect(firstApplication("Master_Resume_XYZ.pdf").card?.token == "XYZ")
+    }
+
+    @Test func p2_ledgerOnlyInQuiet_knownCompaniesStillCardInQuiet() {
+        let quiet = firstApplication("Cover_Letter_Zamp.pdf", sensitivity: .quiet)
+        #expect(quiet.fired.first?.rule == .w4 && quiet.card == nil)
+        #expect(quiet.detail(for: quiet.fired[0]) == "Not shown on Quiet")
+        var known = input("Proposal_Acme.pdf", members: [], known: ["Acme": 1], sensitivity: .quiet)
+        known.ownNames = []
+        #expect(WarningEngine.evaluate(known).card?.rule == .w4)
     }
 
     // MARK: W5

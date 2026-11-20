@@ -61,7 +61,11 @@ struct WarningCardContent: Equatable {
             let token = warning.token ?? ""
             body = [("This file mentions ", false), (token, true), (", but you're sending it to ", false), (destination, true), (".", false)]
             mismatch = (file, token, "\(destination) · \(appName)")
-            primary = "Show sends to \(token)"; secondary = "Send anyway"; mute = "Don't warn for this document"
+            if warning.unfamiliar { // P-2: a company Fallback hasn't seen yet
+                primary = "Show in Finder"; secondary = "Send anyway"; mute = "Not a company name"
+            } else {
+                primary = "Show sends to \(token)"; secondary = "Send anyway"; mute = "Don't warn for this document"
+            }
         case .w5:
             tone = .warning
             title = "Out-of-date export"
