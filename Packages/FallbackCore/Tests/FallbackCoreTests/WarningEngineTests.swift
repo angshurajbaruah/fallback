@@ -151,6 +151,25 @@ struct WarningEngineTests {
         #expect(result.fired.map(\.rule) == [.w3] && result.card == nil)
     }
 
+    /// The case W3 is named for: the same file (same row, FR-17), edited, then sent to the same place again.
+    @Test func w3_sameFileEditedAndResent() {
+        let result = WarningEngine.evaluate(input("resume_v5.pdf", sha: "sha-after-edit", past: [past("resume_v5.pdf", file: 3)], sensitivity: .strict))
+        #expect(result.card?.rule == .w3)
+        #expect(result.card?.previousSend?.fileName == "resume_v5.pdf")
+        #expect(!result.fired.contains { $0.rule == .w2 })
+    }
+
+    @Test func w3_sameFileEditedRenamedAndResent() {
+        let result = WarningEngine.evaluate(input("resume_final.pdf", past: [past("resume_draft.pdf", file: 50)], sensitivity: .strict))
+        #expect(result.card?.rule == .w3)
+        #expect(result.card?.previousSend?.fileName == "resume_draft.pdf")
+    }
+
+    @Test func w3_unchangedFileResent_isW2Only() {
+        let result = WarningEngine.evaluate(input("resume_v5.pdf", past: [past("resume_v5.pdf", file: 3)], sensitivity: .strict))
+        #expect(result.fired.map(\.rule) == [.w2])
+    }
+
     @Test func w3_notForAnotherDocument() {
         let result = WarningEngine.evaluate(input("resume_v5.pdf", past: [past("invoice.pdf", file: 9, family: 99)], sensitivity: .strict))
         #expect(result.fired.isEmpty)

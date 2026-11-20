@@ -52,7 +52,8 @@ struct WarningCardContent: Equatable {
             title = "Heads up"
             let old = warning.previousSend
             body = [(destination, true), (" has an earlier version (\(old?.fileName ?? "another file"), \(Self.date(old?.sentAt))).", false)]
-            pills = [Pill(title: Self.when(other?.editedAt, on: false), subtitle: "\(destination) has", kind: .neutral),
+            // The same file edited and resent has no other family member to date: use when they got it.
+            pills = [Pill(title: Self.when(other?.editedAt ?? old?.sentAt, on: false), subtitle: "\(destination) has", kind: .neutral),
                      Pill(title: Self.when(input.editedAt, on: false), subtitle: "sending now", kind: .good)]
             primary = "Show what they have"; secondary = "Send anyway"; mute = "Don't warn for this document"
         case .w4:

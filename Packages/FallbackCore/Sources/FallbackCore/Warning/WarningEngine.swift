@@ -339,7 +339,9 @@ public enum WarningEngine {
         guard let family = input.familyID else { return nil }
         let previous = input.pastSends
             .filter { $0.sendID != input.sendID && $0.familyID == family && $0.destinationKey == input.destinationKey }
-            .filter { $0.sha256 != input.sha256 && $0.fileID != input.fileID }
+            // Different contents only. Not "a different file": a file keeps its row across edits and renames
+            // (FR-17), so the edited-and-resent case W3 is named for has the same file ID. W2 covers identical contents.
+            .filter { $0.sha256 != input.sha256 }
             .max { $0.sentAt < $1.sentAt }
         guard let previous else { return nil }
         let file = input.family.first { $0.id == previous.fileID }
