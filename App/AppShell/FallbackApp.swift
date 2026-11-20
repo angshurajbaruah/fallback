@@ -52,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Theme.registerFonts()
         #if DEBUG
-        if Snapshots.runIfRequested() || Scenarios.runIfRequested() { exit(0) }
+        if Snapshots.runIfRequested() || Scenarios.runIfRequested() || AXDump.runIfRequested() { exit(0) }
         #endif
         model.start()
         model.claimLoginItem()
